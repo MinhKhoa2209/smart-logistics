@@ -13,7 +13,7 @@ export const createProductSchema = z.object({
   unit_cost: z.number().min(0, 'Unit cost must be non-negative'),
   unit_price: z.number().min(0, 'Unit price must be non-negative'),
   min_stock_level: z.number().int().min(0).optional().default(0),
-  supplier_id: z.number().int().positive('Supplier is required'),
+  supplier_id: z.number().int().positive().nullable().optional(),
   is_active: z.boolean().optional().default(true),
 });
 

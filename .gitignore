@@ -46,7 +46,6 @@ coverage/
 # Temporary scripts
 backend/gen-embed.js
 backend/generate-embeddings.ts
-backend/setup-ollama.js
 
 # Docker volumes (local only)
 pgdata/

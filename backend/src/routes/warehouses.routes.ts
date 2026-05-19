@@ -4,6 +4,7 @@ import {
   warehouseIdParamsSchema,
   warehouseListQuerySchema,
   warehouseInventoryQuerySchema,
+  createWarehouseSchema,
 } from '../validators/warehouses.validator';
 import * as warehousesService from '../services/warehouses.service';
 
@@ -68,6 +69,23 @@ router.get(
         pageSize || 50
       );
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/warehouses
+ * Create a new warehouse.
+ */
+router.post(
+  '/',
+  validate({ body: createWarehouseSchema }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const warehouse = await warehousesService.createWarehouse(req.body);
+      res.status(201).json({ data: warehouse });
     } catch (error) {
       next(error);
     }

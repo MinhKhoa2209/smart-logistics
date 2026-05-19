@@ -35,3 +35,16 @@ export async function getWarehouseInventory(id: number): Promise<WarehouseInvent
   const { data } = await apiClient.get(`/warehouses/${id}/inventory`);
   return data.data || data;
 }
+
+export interface WarehouseCreateInput {
+  name: string;
+  warehouse_type: string;
+  location?: string;
+  capacity?: number;
+  manager_id?: number | null;
+}
+
+export async function createWarehouse(input: WarehouseCreateInput): Promise<Warehouse> {
+  const { data } = await apiClient.post('/warehouses', input);
+  return data.data || data;
+}

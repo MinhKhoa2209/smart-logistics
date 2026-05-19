@@ -149,3 +149,30 @@ export async function findInventoryByWarehouseId(
   const total = parseInt(countResult.rows[0]?.total || '0', 10);
   return { items: dataResult.rows, total };
 }
+
+/**
+ * Create a new warehouse.
+ */
+export async function create(data: {
+  name: string;
+  warehouse_type: string;
+  location?: string | null;
+  capacity?: number | null;
+  manager_id?: number | null;
+}): Promise<WarehouseDetail> {
+  const sql = `
+    INSERT INTO warehouses (name, warehouse_type, location, capacity, manager_id)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING warehouse_id, name, warehouse_type, location, capacity, is_active,
+              manager_id, NULL::numeric as latitude, NULL::numeric as longitude,
+              created_at, updated_at
+  `;
+  const result = await query<WarehouseDetail>(sql, [
+    data.name,
+    data.warehouse_type,
+    data.location || null,
+    data.capacity || null,
+    data.manager_id || null,
+  ]);
+  return result.rows[0];
+}

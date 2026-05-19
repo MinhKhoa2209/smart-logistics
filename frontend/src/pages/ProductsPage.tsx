@@ -141,14 +141,21 @@ export default function ProductsPage() {
 }
 
 function ProductFormModal({ isOpen, onClose, onSubmit, title, initial }: { isOpen: boolean; onClose: () => void; onSubmit: (data: any) => Promise<void>; title: string; initial?: productsApi.Product }) {
-  const [form, setForm] = useState({ sku: initial?.sku || '', name: initial?.name || '', category: initial?.category || '', unit: initial?.unit || '', unit_cost: initial?.unit_cost?.toString() || '', unit_price: initial?.unit_price?.toString() || '' });
+  const [form, setForm] = useState({ sku: initial?.sku || '', name: initial?.name || '', category: initial?.category || '', unit: initial?.unit || '', unit_cost: initial?.unit_cost?.toString() || '', unit_price: initial?.unit_price?.toString() || '', supplier_id: initial?.supplier_id?.toString() || '' });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true); setErr('');
-    try { await onSubmit({ ...form, unit_cost: parseFloat(form.unit_cost), unit_price: parseFloat(form.unit_price) }); }
+    try {
+      await onSubmit({
+        ...form,
+        unit_cost: parseFloat(form.unit_cost),
+        unit_price: parseFloat(form.unit_price),
+        supplier_id: form.supplier_id ? parseInt(form.supplier_id) : null,
+      });
+    }
     catch (e: any) { setErr(e.message); }
     setSubmitting(false);
   }
@@ -168,6 +175,7 @@ function ProductFormModal({ isOpen, onClose, onSubmit, title, initial }: { isOpe
         <div><label className="block text-sm font-medium mb-1.5">Unit</label><Input required value={form.unit} onChange={(e) => setForm(f => ({ ...f, unit: e.target.value }))} /></div>
         <div><label className="block text-sm font-medium mb-1.5">Unit Cost</label><Input required type="number" step="0.01" value={form.unit_cost} onChange={(e) => setForm(f => ({ ...f, unit_cost: e.target.value }))} /></div>
         <div><label className="block text-sm font-medium mb-1.5">Unit Price</label><Input required type="number" step="0.01" value={form.unit_price} onChange={(e) => setForm(f => ({ ...f, unit_price: e.target.value }))} /></div>
+        <div className="col-span-2"><label className="block text-sm font-medium mb-1.5">Supplier ID <span className="text-muted-foreground font-normal">(optional)</span></label><Input type="number" placeholder="Leave empty if no supplier" value={form.supplier_id} onChange={(e) => setForm(f => ({ ...f, supplier_id: e.target.value }))} /></div>
       </form>
     </Modal>
   );

@@ -63,9 +63,13 @@ docker exec smartlogistic-db psql -U postgres -d smart_logistics -f /tmp/seed.sq
 ### 5. Setup Ollama embeddings (for semantic search)
 
 ```bash
+# Pull nomic-embed-text model and generate embeddings for all products
 docker cp backend/setup-ollama.js smartlogistic-backend:/app/setup-ollama.js
 docker exec smartlogistic-backend node /app/setup-ollama.js
 ```
+
+> Note: This step requires the Ollama container to be running and healthy.
+> The model download (~274MB) happens automatically on first run.
 
 ### 6. Open the app
 

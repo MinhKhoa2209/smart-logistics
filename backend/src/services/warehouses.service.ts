@@ -45,3 +45,16 @@ export async function getWarehouseInventory(
 
   return formatPaginatedResponse(items, total, page, pageSize);
 }
+
+/**
+ * Create a new warehouse.
+ */
+export async function createWarehouse(data: {
+  name: string;
+  warehouse_type: string;
+  location?: string | null;
+  capacity?: number | null;
+  manager_id?: number | null;
+}) {
+  return warehousesRepository.create(data);
+}
