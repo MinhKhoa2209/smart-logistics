@@ -45,13 +45,28 @@ Edit `.env` and set your password:
 POSTGRES_PASSWORD=your_secure_password
 ```
 
-> No need to create `.env` inside `backend/` or `frontend/` — Docker Compose handles all environment variables automatically.
+> **Important:** If you change `POSTGRES_PASSWORD` after the database volume already exists, you must delete the old volume first:
+> ```bash
+> docker-compose down -v   # removes pgdata volume
+> docker-compose up -d     # recreates DB with new password
+> ```
+> Then re-run steps 3–5 to restore schema and seed data.
 
 ### 2. Start all services
 
+**Option A — Automated setup (recommended):**
+
 ```bash
-docker-compose up -d
+# Linux/Mac
+bash scripts/setup.sh
+
+# Windows PowerShell
+.\scripts\setup.ps1
 ```
+
+This script automatically: starts Docker, waits for DB, restores schema, seeds data, and sets up embeddings.
+
+**Option B — Manual setup:**
 
 This starts: PostgreSQL, Ollama, Backend API, Frontend.
 
