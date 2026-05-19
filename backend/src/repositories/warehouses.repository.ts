@@ -94,8 +94,8 @@ export async function findById(warehouseId: number): Promise<WarehouseDetail | n
       w.is_active,
       w.manager_id,
       u.full_name AS manager_name,
-      NULL::numeric as latitude,
-      NULL::numeric as longitude,
+      w.latitude,
+      w.longitude,
       w.created_at,
       w.updated_at
     FROM warehouses w
@@ -159,13 +159,14 @@ export async function create(data: {
   location?: string | null;
   capacity?: number | null;
   manager_id?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }): Promise<WarehouseDetail> {
   const sql = `
-    INSERT INTO warehouses (name, warehouse_type, location, capacity, manager_id)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO warehouses (name, warehouse_type, location, capacity, manager_id, latitude, longitude)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING warehouse_id, name, warehouse_type, location, capacity, is_active,
-              manager_id, NULL::numeric as latitude, NULL::numeric as longitude,
-              created_at, updated_at
+              manager_id, latitude, longitude, created_at, updated_at
   `;
   const result = await query<WarehouseDetail>(sql, [
     data.name,
@@ -173,6 +174,8 @@ export async function create(data: {
     data.location || null,
     data.capacity || null,
     data.manager_id || null,
+    data.latitude || null,
+    data.longitude || null,
   ]);
   return result.rows[0];
 }

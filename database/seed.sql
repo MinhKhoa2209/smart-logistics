@@ -32,14 +32,14 @@ INSERT INTO users (username, full_name, email, phone, role, is_active) VALUES
 ('staff_dn_01',  'Hoàng Văn Đức',          'duc.hoang@smartlogistics.vn',  '0967-890-123',  'staff',             true);
 
 -- ─── 2. WAREHOUSES ───────────────────────────────────────────
-INSERT INTO warehouses (name, warehouse_type, location, capacity, manager_id) VALUES
-('Kho Trung tâm TP.HCM',    'distribution_center', 'KCN Tân Bình, Quận Tân Bình, TP.HCM',          80000, 2),
-('Kho Hà Nội',              'distribution_center', 'KCN Thăng Long, Đông Anh, Hà Nội',             60000, 3),
-('Kho Đà Nẵng',             'distribution_center', 'KCN Hòa Khánh, Liên Chiểu, Đà Nẵng',          35000, 4),
-('Kho Lạnh Bình Dương',     'cold_storage',        'KCN VSIP II, Thị xã Tân Uyên, Bình Dương',     20000, 2),
-('Kho Trả Hàng TP.HCM',    'returns',             'Quận Bình Tân, TP.HCM',                          8000, 2),
-('Kho Fulfillment HCM',     'fulfillment',         'Quận 12, TP.HCM',                               15000, 2),
-('Kho Bán Lẻ Hà Nội',      'retail',              '123 Giải Phóng, Hai Bà Trưng, Hà Nội',           5000, 3);
+INSERT INTO warehouses (name, warehouse_type, location, capacity, manager_id, latitude, longitude) VALUES
+('Kho Trung tâm TP.HCM',    'distribution_center', 'KCN Tân Bình, Quận Tân Bình, TP.HCM',          80000, 2, 10.8231, 106.6297),
+('Kho Hà Nội',              'distribution_center', 'KCN Thăng Long, Đông Anh, Hà Nội',             60000, 3, 21.0285, 105.8542),
+('Kho Đà Nẵng',             'distribution_center', 'KCN Hòa Khánh, Liên Chiểu, Đà Nẵng',          35000, 4, 16.0544, 108.2022),
+('Kho Lạnh Bình Dương',     'cold_storage',        'KCN VSIP II, Thị xã Tân Uyên, Bình Dương',     20000, 2, 11.0686, 106.7722),
+('Kho Trả Hàng TP.HCM',    'returns',             'Quận Bình Tân, TP.HCM',                          8000, 2, 10.7769, 106.6020),
+('Kho Fulfillment HCM',     'fulfillment',         'Quận 12, TP.HCM',                               15000, 2, 10.8626, 106.6297),
+('Kho Bán Lẻ Hà Nội',      'retail',              '123 Giải Phóng, Hai Bà Trưng, Hà Nội',           5000, 3, 21.0245, 105.8412);
 
 -- Assign staff to warehouses
 UPDATE users SET assigned_warehouse_id = 1 WHERE username IN ('staff_hcm_01', 'staff_hcm_02');
