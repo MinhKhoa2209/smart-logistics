@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+*.log
+*.ts.bak
+gen-embed.js
+generate-embeddings.ts
+setup-ollama.js
+coverage/
