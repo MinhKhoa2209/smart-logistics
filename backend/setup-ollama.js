@@ -33,6 +33,11 @@ async function generateEmbedding(text) {
 }
 
 async function main() {
+  // Ensure pgvector extension and embedding column exist
+  await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+  await pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768)');
+  await pool.query('DROP INDEX IF EXISTS idx_products_embedding');
+
   // Pull model first
   await pullModel();
 

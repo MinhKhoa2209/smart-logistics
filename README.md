@@ -34,9 +34,18 @@ A warehouse operations and logistics management system built to demonstrate adva
 
 ```bash
 git clone <repo-url>
-cd smartlogistic
-cp .env.example .env   # edit if needed
+cd smart-logistics
+
+# Create .env from template (only file you need to create)
+cp .env.example .env
 ```
+
+Edit `.env` and set your password:
+```
+POSTGRES_PASSWORD=your_secure_password
+```
+
+> No need to create `.env` inside `backend/` or `frontend/` — Docker Compose handles all environment variables automatically.
 
 ### 2. Start all services
 

@@ -3,6 +3,16 @@
 -- Realistic Vietnamese logistics/warehouse data
 -- ============================================================
 
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Add embedding column if not exists
+ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768);
+
+-- Create vector index
+DROP INDEX IF EXISTS idx_products_embedding;
+CREATE INDEX idx_products_embedding ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 5);
+
 -- Clear existing data (order matters for FK constraints)
 TRUNCATE TABLE payments, shipment_orders, shipment_items, shipments,
   customer_order_items, customer_orders, transfer_items, transfer_orders,
