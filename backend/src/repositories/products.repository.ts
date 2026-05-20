@@ -1,4 +1,5 @@
 import { query } from '../config/database';
+import { queryWithContext } from '../middleware/appContext';
 import { CreateProductInput, UpdateProductInput } from '../validators/products.validator';
 
 /**
@@ -137,9 +138,9 @@ export async function findById(productId: number): Promise<ProductDetailRow | nu
     return null;
   }
 
-  // Get inventory across warehouses
+  // Get inventory across warehouses — uses queryWithContext so RLS evaluates correctly
   const inventorySql = `
-    SELECT 
+    SELECT
       i.inventory_id,
       i.warehouse_id,
       w.name as warehouse_name,
@@ -155,7 +156,7 @@ export async function findById(productId: number): Promise<ProductDetailRow | nu
     ORDER BY w.name ASC
   `;
 
-  const inventoryResult = await query<ProductInventoryRow>(inventorySql, [productId]);
+  const inventoryResult = await queryWithContext<ProductInventoryRow>(inventorySql, [productId]);
 
   return {
     ...productResult.rows[0],

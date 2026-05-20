@@ -1,7 +1,12 @@
 import { query } from '../config/database';
+import { queryWithContext } from '../middleware/appContext';
 
 /**
  * Dashboard repository — handles all database queries for the dashboard metrics.
+ *
+ * Queries against RLS-protected tables (inventory) use queryWithContext() so that
+ * app.current_user_id is set inside a transaction before the query runs.
+ * Non-RLS tables (products, warehouses, shipments, stock_movements) use query() directly.
  */
 
 export interface DashboardMetrics {
@@ -49,10 +54,13 @@ export async function getActiveWarehousesCount(): Promise<number> {
 /**
  * Get the count of low stock items using the idx_inventory_low_stock partial index.
  * The partial index is defined as: WHERE quantity <= reorder_point
+ *
+ * Uses queryWithContext() so RLS policy on inventory evaluates correctly.
+ * userId defaults to 1 (admin) to see all warehouses on the dashboard.
  */
-export async function getLowStockCount(): Promise<number> {
+export async function getLowStockCount(userId = 1): Promise<number> {
   const sql = `SELECT COUNT(*) as count FROM inventory WHERE quantity <= reorder_point`;
-  const result = await query<{ count: string }>(sql);
+  const result = await queryWithContext<{ count: string }>(sql, [], userId);
   return parseInt(result.rows[0].count, 10);
 }
 
@@ -90,7 +98,7 @@ export async function getShipmentStatusCounts(): Promise<Record<string, number>>
  */
 export async function getRecentMovements(): Promise<RecentMovementRow[]> {
   const sql = `
-    SELECT 
+    SELECT
       sm.movement_id,
       p.name as product_name,
       w.name as warehouse_name,
@@ -111,10 +119,13 @@ export async function getRecentMovements(): Promise<RecentMovementRow[]> {
  * Get up to 50 low stock items using the idx_inventory_low_stock partial index.
  * Ordered by (quantity / reorder_point) ASC — most critical items first.
  * Includes product name, current quantity, reorder_point, and warehouse name.
+ *
+ * Uses queryWithContext() so RLS policy on inventory evaluates correctly.
+ * userId defaults to 1 (admin) to see all warehouses on the dashboard.
  */
-export async function getLowStockAlerts(): Promise<LowStockAlertRow[]> {
+export async function getLowStockAlerts(userId = 1): Promise<LowStockAlertRow[]> {
   const sql = `
-    SELECT 
+    SELECT
       i.inventory_id,
       p.name as product_name,
       w.name as warehouse_name,
@@ -127,6 +138,6 @@ export async function getLowStockAlerts(): Promise<LowStockAlertRow[]> {
     ORDER BY (i.quantity::float / NULLIF(i.reorder_point, 0)) ASC
     LIMIT 50
   `;
-  const result = await query<LowStockAlertRow>(sql);
+  const result = await queryWithContext<LowStockAlertRow>(sql, [], userId);
   return result.rows;
 }

@@ -1,19 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getClient, query } from '../config/database';
 
-/**
- * Middleware to set PostgreSQL session variable `app.current_user_id`.
- * This is used by RLS policies and audit triggers to identify the current user.
- *
- * Since there is no auth system yet, defaults to user_id = 1 (admin).
- *
- * Uses SET SESSION so the variable persists for the lifetime of the connection
- * from the pool. Individual transactions can override it with SET LOCAL.
- *
- * IMPORTANT: Because pg uses a connection pool, we set the variable on a
- * dedicated client per-request only when needed (inside transactions).
- * For non-transactional queries that need RLS, use queryWithContext() below.
- */
+
 export function appContext() {
   return (_req: Request, _res: Response, next: NextFunction): void => {
     // Hardcoded to user_id = 1 (admin) until auth is implemented.
@@ -37,7 +25,9 @@ export async function setAppContext(
   client: { query: (text: string, params?: any[]) => Promise<any> },
   userId: number = 1
 ): Promise<void> {
-  await client.query('SET LOCAL app.current_user_id = $1', [userId.toString()]);
+  // PostgreSQL SET does not support $1 placeholders — use integer directly.
+  // userId is always a number so there is no SQL injection risk.
+  await client.query(`SET LOCAL app.current_user_id = ${Math.trunc(userId)}`);
 }
 
 /**
@@ -59,7 +49,9 @@ export async function queryWithContext<T = any>(
   const client = await getClient();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user_id = $1', [userId.toString()]);
+    // PostgreSQL SET does not support $1 placeholders — use integer directly.
+    // userId is always a number so there is no SQL injection risk.
+    await client.query(`SET LOCAL app.current_user_id = ${Math.trunc(userId)}`);
     const result = await client.query(sql, params);
     await client.query('COMMIT');
     return { rows: result.rows as T[], rowCount: result.rowCount };
@@ -77,5 +69,5 @@ export async function queryWithContext<T = any>(
  * behaves like SET SESSION and can leak to other requests via the connection pool.
  */
 export async function setAppContextPool(userId: number = 1): Promise<void> {
-  await query('SET LOCAL app.current_user_id = $1', [userId.toString()]);
+  await query(`SET LOCAL app.current_user_id = ${Math.trunc(userId)}`);
 }

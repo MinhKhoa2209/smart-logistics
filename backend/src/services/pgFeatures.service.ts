@@ -113,6 +113,9 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     // BEGIN transaction
     const beginStart = Date.now();
     await client.query('BEGIN');
+    // Set app context so RLS policies on inventory (triggered by stock_movements insert) pass.
+    // Uses admin (user_id=1) for the demo since there is no auth system yet.
+    await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
       result: { message: 'Transaction started' },
@@ -451,6 +454,8 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     // BEGIN transaction
     const beginStart = Date.now();
     await client.query('BEGIN');
+    // Set app context so RLS policies on inventory (triggered by stock_movements insert) pass.
+    await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
       result: { message: 'Transaction started (will ROLLBACK at end to preserve data)' },
@@ -699,6 +704,8 @@ async function executeMoveStockAdvanced(params: Record<string, any>): Promise<De
 
   try {
     await client.query('BEGIN');
+    // Set app context so RLS policies on inventory (triggered by move_stock_advanced) pass.
+    await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
       result: { message: 'Transaction started (will ROLLBACK to preserve data)' },

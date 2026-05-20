@@ -1,4 +1,5 @@
 import { query } from '../config/database';
+import { queryWithContext } from '../middleware/appContext';
 
 export interface WarehouseListItem {
   warehouse_id: number;
@@ -109,11 +110,13 @@ export async function findById(warehouseId: number): Promise<WarehouseDetail | n
 
 /**
  * Get all inventory records for a specific warehouse including product name and lot number.
+ * Uses queryWithContext() so RLS policy on inventory evaluates correctly.
  */
 export async function findInventoryByWarehouseId(
   warehouseId: number,
   page: number = 1,
-  pageSize: number = 50
+  pageSize: number = 50,
+  userId: number = 1
 ): Promise<{ items: WarehouseInventoryItem[]; total: number }> {
   const offset = (Math.max(1, page) - 1) * pageSize;
 
@@ -142,8 +145,8 @@ export async function findInventoryByWarehouseId(
   `;
 
   const [countResult, dataResult] = await Promise.all([
-    query<{ total: string }>(countSql, [warehouseId]),
-    query<WarehouseInventoryItem>(dataSql, [warehouseId, pageSize, offset]),
+    queryWithContext<{ total: string }>(countSql, [warehouseId], userId),
+    queryWithContext<WarehouseInventoryItem>(dataSql, [warehouseId, pageSize, offset], userId),
   ]);
 
   const total = parseInt(countResult.rows[0]?.total || '0', 10);

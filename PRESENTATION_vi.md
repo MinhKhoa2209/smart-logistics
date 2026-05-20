@@ -247,16 +247,73 @@ FROM products ORDER BY embedding <=> $1::vector LIMIT 20;
 ### 3.9 Row Level Security — RLS (Phân quyền tầng database)
 
 **Ví dụ đời thực:**
-Nhân viên kho HCM chỉ được xem hàng trong kho HCM. Quy tắc này phải do **database enforce** — không phụ thuộc vào ứng dụng.
+Nhân viên kho HCM chỉ được xem hàng trong kho HCM. Quản lý kho thấy các kho mình phụ trách. Giám đốc thấy tất cả. Quy tắc này phải do **database enforce** — không phụ thuộc vào code ứng dụng.
+
+**Tại sao không để ứng dụng kiểm tra?**
+Vì nếu code có bug, hoặc ai đó truy cập DB trực tiếp qua pgAdmin/DBeaver → họ bypass được. RLS đảm bảo: dù dùng công cụ nào → vẫn bị giới hạn.
 
 **Cách hoạt động:**
 ```
-Request → Backend set: SET LOCAL app.current_user_id = '5'
-→ PostgreSQL tự thêm điều kiện ẩn: WHERE warehouse_id = 1
-→ Staff thấy 23 dòng | Manager thấy 30 | Admin thấy 58
+Request → Backend set (trong transaction):
+  BEGIN;
+  SET LOCAL app.current_user_id = '5';  (staff, assigned kho HCM)
+
+Khi query: SELECT * FROM inventory
+  → PostgreSQL gọi get_current_app_user() cho từng dòng:
+      đọc app.current_user_id từ session → tra bảng users
+  → Tự động áp policy tương ứng:
+      staff:             WHERE warehouse_id = assigned_warehouse_id
+      warehouse_manager: WHERE warehouse_id IN (kho đang quản lý)
+      admin:             không giới hạn
+
+Kết quả: staff (userId=5)           → 26 dòng  (chỉ kho được giao)
+         warehouse_manager (userId=2) → 37 dòng  (các kho đang quản lý)
+         admin (userId=1)             → 58 dòng  (tất cả)
 ```
 
-**Demo:** Trang PG Features → tab RLS → bấm "Compare Role Visibility".
+**Vấn đề quan trọng — tại sao `postgres` superuser bypass RLS:**
+
+PostgreSQL superuser mặc định có `BYPASSRLS = true`. Nếu backend kết nối bằng user `postgres`, **toàn bộ RLS policy bị bỏ qua hoàn toàn** dù có `SET LOCAL app.current_user_id` hay không. Fix là tạo một DB role riêng không có quyền superuser:
+
+```sql
+-- Tạo role ứng dụng, không có BYPASSRLS
+CREATE ROLE app_user WITH LOGIN PASSWORD '...'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+
+-- Cấp đúng quyền cần thiết
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO app_user;
+```
+
+```yaml
+# docker-compose.yml — backend kết nối bằng app_user, không phải postgres
+DATABASE_URL: postgresql://app_user:app_password@db:5432/smart_logistics
+```
+
+**Tại sao dùng `SET LOCAL` thay vì `SET SESSION`:**
+
+`SET LOCAL` chỉ có hiệu lực trong transaction hiện tại. Với connection pool, connection được tái sử dụng giữa các request. Nếu dùng `SET SESSION`, `user_id` của request trước sẽ bị leak sang request sau. Backend wrap mọi query cần RLS trong transaction:
+
+```typescript
+// queryWithContext() trong appContext.ts
+await client.query('BEGIN');
+await client.query('SET LOCAL app.current_user_id = $1', [userId]);
+const result = await client.query(sql, params);   // RLS thấy đúng user
+await client.query('COMMIT');
+// Connection trả về pool — SET LOCAL biến mất, không leak
+```
+
+**4 policies đang active trên bảng `inventory`:**
+
+| Command | Policy | Quy tắc |
+|---|---|---|
+| SELECT | `inventory_select_policy` | admin: tất cả; manager: kho đang quản lý; staff: kho được giao |
+| INSERT | `inventory_insert_policy` | Như SELECT |
+| UPDATE | `inventory_update_policy` | Như SELECT (cả USING lẫn WITH CHECK) |
+| DELETE | `inventory_delete_policy` | Chỉ admin |
+
+**Demo:** Trang PG Features → tab RLS → bấm "Compare Role Visibility" → thấy staff=26, manager=37, admin=58 dòng.
 
 ---
 
