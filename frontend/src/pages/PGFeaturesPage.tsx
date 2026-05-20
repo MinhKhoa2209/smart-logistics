@@ -264,16 +264,55 @@ function PartialIndexesDemo() {
       {result && (
         <div className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            {/* With Index */}
             <div className="rounded-xl border border-green-200 bg-green-50/50 dark:bg-green-950/20 p-4">
-              <div className="flex items-center justify-between mb-2"><h4 className="font-semibold text-sm text-green-800 dark:text-green-400">✓ With Partial Index</h4><Badge variant="success">{result.comparison.withIndex.executionTimeMs}ms</Badge></div>
-              <p className="text-xs text-green-700 dark:text-green-500 mb-2">Scan: <code>{result.comparison.withIndex.scanType}</code></p>
+              <h4 className="font-semibold text-sm text-green-800 dark:text-green-400 mb-3">✓ With Partial Index</h4>
+              <p className="text-xs text-green-700 dark:text-green-500 mb-3">
+                Scan: <code>{result.comparison.withIndex.scanType}</code>
+              </p>
+              {/* Row bar */}
+              <p className="text-xs font-medium text-green-800 dark:text-green-400 mb-1">
+                Rows read: <strong>{result.comparison.withIndex.rowsScanned}</strong> / {result.comparison.totalRows}
+              </p>
+              <div className="w-full bg-green-100 dark:bg-green-900/40 rounded-full h-3 overflow-hidden">
+                <div
+                  className="bg-green-500 h-3 rounded-full transition-all"
+                  style={{ width: `${(result.comparison.withIndex.rowsScanned / result.comparison.totalRows) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                Only reads rows matching <code>quantity &lt;= reorder_point</code>
+              </p>
             </div>
+
+            {/* Without Index */}
             <div className="rounded-xl border border-red-200 bg-red-50/50 dark:bg-red-950/20 p-4">
-              <div className="flex items-center justify-between mb-2"><h4 className="font-semibold text-sm text-red-800 dark:text-red-400">✗ Without Index (Seq Scan)</h4><Badge variant="destructive">{result.comparison.withoutIndex.executionTimeMs}ms</Badge></div>
-              <p className="text-xs text-red-700 dark:text-red-500 mb-2">Scan: <code>{result.comparison.withoutIndex.scanType}</code></p>
+              <h4 className="font-semibold text-sm text-red-800 dark:text-red-400 mb-3">✗ Without Index (Seq Scan)</h4>
+              <p className="text-xs text-red-700 dark:text-red-500 mb-3">
+                Scan: <code>{result.comparison.withoutIndex.scanType}</code>
+              </p>
+              {/* Row bar — always full */}
+              <p className="text-xs font-medium text-red-800 dark:text-red-400 mb-1">
+                Rows read: <strong>{result.comparison.totalRows}</strong> / {result.comparison.totalRows}
+              </p>
+              <div className="w-full bg-red-100 dark:bg-red-900/40 rounded-full h-3 overflow-hidden">
+                <div className="bg-red-500 h-3 rounded-full w-full" />
+              </div>
+              <p className="text-xs text-red-600 dark:text-red-500 mt-1">
+                Must scan every row in the table to find matches
+              </p>
             </div>
           </div>
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center"><p className="text-lg font-bold text-primary">{result.comparison.speedup}</p><p className="text-sm text-muted-foreground">Partial index performance advantage</p></div>
+
+          {/* Summary */}
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+            <p className="text-sm font-semibold text-primary mb-1">
+              Index reads {result.comparison.withIndex.rowsScanned} rows — Seq Scan reads all {result.comparison.totalRows} rows
+            </p>
+            <p className="text-xs text-muted-foreground">
+              At production scale (millions of rows), the index jumps directly to matching rows while Seq Scan reads every single row — the performance gap grows proportionally with table size.
+            </p>
+          </div>
         </div>
       )}
     </div>

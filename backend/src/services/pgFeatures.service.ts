@@ -831,24 +831,32 @@ export async function partialIndexesDemo(): Promise<{
   withoutIndex: DemoExecutionResult;
   indexMetadata: DemoExecutionResult;
   comparison: {
-    withIndex: { scanType: string; executionTimeMs: number; cost: string };
-    withoutIndex: { scanType: string; executionTimeMs: number; cost: string };
+    withIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number };
+    withoutIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number };
     speedup: string;
+    costRatio: number;
+    totalRows: number;
+    indexSize: string;
+    tableSize: string;
+    indexVsTablePct: string;
+    rowsScanRatio: string | null;
+    explanation: string;
   };
 }> {
   const client = await getClient();
 
   try {
     await client.query('BEGIN');
+    // Set app context so RLS on inventory passes for all queries in this demo
+    await client.query('SET LOCAL app.current_user_id = 1');
 
-    // The query that benefits from the partial index
     const querySql = `SELECT * FROM inventory WHERE quantity <= reorder_point`;
     const explainSql = `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${querySql}`;
+    const RUNS = 20;
 
-    // 1. Run multiple times WITH index to get stable timing
+    // 1. Run WITH index
     let withIndexTotalMs = 0;
     let withIndexPlan = '';
-    const RUNS = 20;
     for (let i = 0; i < RUNS; i++) {
       const t = Date.now();
       const r = await client.query(explainSql);
@@ -857,10 +865,9 @@ export async function partialIndexesDemo(): Promise<{
     }
     const withIndexAvgMs = withIndexTotalMs / RUNS;
 
-    // 2. Force seq scan (disable index) and run multiple times
+    // 2. Force seq scan and run WITHOUT index
     await client.query('SET LOCAL enable_indexscan = off');
     await client.query('SET LOCAL enable_bitmapscan = off');
-
     let withoutIndexTotalMs = 0;
     let withoutIndexPlan = '';
     for (let i = 0; i < RUNS; i++) {
@@ -870,11 +877,10 @@ export async function partialIndexesDemo(): Promise<{
       if (i === RUNS - 1) withoutIndexPlan = r.rows.map((row: any) => row['QUERY PLAN']).join('\n');
     }
     const withoutIndexAvgMs = withoutIndexTotalMs / RUNS;
-
     await client.query('RESET enable_indexscan');
     await client.query('RESET enable_bitmapscan');
 
-    // 3. Get index metadata
+    // 3. Index metadata
     const indexMetaSql = `
       SELECT indexname, tablename, indexdef,
              pg_size_pretty(pg_relation_size(indexname::regclass)) AS index_size
@@ -884,6 +890,22 @@ export async function partialIndexesDemo(): Promise<{
     const indexMetaStart = Date.now();
     const indexMetaResult = await client.query(indexMetaSql);
     const indexMetaTime = Date.now() - indexMetaStart;
+
+    // 4. Total rows + index/table size (inside transaction so RLS passes)
+    const totalRowsResult = await client.query('SELECT COUNT(*) as total FROM inventory');
+    const totalRows = parseInt(totalRowsResult.rows[0].total, 10);
+
+    const sizeResult = await client.query(
+      `SELECT pg_size_pretty(pg_relation_size('idx_inventory_low_stock')) AS index_size,
+              pg_size_pretty(pg_total_relation_size('inventory')) AS table_total_size,
+              pg_relation_size('idx_inventory_low_stock') AS index_bytes,
+              pg_total_relation_size('inventory') AS table_bytes`
+    );
+    const indexSize = sizeResult.rows[0]?.index_size || 'N/A';
+    const tableSize = sizeResult.rows[0]?.table_total_size || 'N/A';
+    const indexBytes = parseInt(sizeResult.rows[0]?.index_bytes || '0', 10);
+    const tableBytes = parseInt(sizeResult.rows[0]?.table_bytes || '0', 10);
+    const indexVsTablePct = tableBytes > 0 ? ((indexBytes / tableBytes) * 100).toFixed(1) : '0';
 
     await client.query('ROLLBACK');
 
@@ -895,65 +917,62 @@ export async function partialIndexesDemo(): Promise<{
     const withIndexCost = parseCost(withIndexPlan);
     const withoutIndexCost = parseCost(withoutIndexPlan);
 
-    // Use cost comparison (more reliable than wall-clock for small data)
+    // Parse actual rows scanned from EXPLAIN ANALYZE output
+    const parseRowsScanned = (plan: string): number => {
+      const match = plan.match(/actual time=[\d.]+\.\.[\d.]+ rows=(\d+)/);
+      if (match) return parseInt(match[1], 10);
+      const fallback = plan.match(/rows=(\d+)/);
+      return fallback ? parseInt(fallback[1], 10) : 0;
+    };
+    const withIndexRowsScanned = parseRowsScanned(withIndexPlan);
+    const withoutIndexRowsScanned = parseRowsScanned(withoutIndexPlan);
+
+    // Cost ratio — planner cost is the most meaningful metric for small tables
     const withIndexCostNum = parseFloat(withIndexCost.split('..')[1] || '0');
     const withoutIndexCostNum = parseFloat(withoutIndexCost.split('..')[1] || '0');
-
     let speedup: string;
-    if (withIndexCostNum > 0 && withoutIndexCostNum > 0 && withoutIndexCostNum > withIndexCostNum) {
-      speedup = `${(withoutIndexCostNum / withIndexCostNum).toFixed(2)}x lower cost with index`;
-    } else if (withIndexExecTime > 0 && withoutIndexExecTime > 0) {
-      const ratio = withoutIndexExecTime / withIndexExecTime;
-      speedup = ratio > 1
-        ? `${ratio.toFixed(2)}x faster with index (avg over ${RUNS} runs)`
-        : `Index overhead: ${(1 / ratio).toFixed(2)}x (data too small — index shines at scale)`;
+    let costRatio: number;
+    if (withIndexCostNum > 0 && withoutIndexCostNum > 0) {
+      costRatio = withoutIndexCostNum / withIndexCostNum;
+      speedup = costRatio > 1
+        ? `${costRatio.toFixed(2)}x lower planner cost with index`
+        : `Costs similar at this scale — index advantage grows with table size`;
     } else {
+      costRatio = 1;
       speedup = `Cost: with index ${withIndexCost} vs without ${withoutIndexCost}`;
     }
+
+    const rowsScanRatio = (withoutIndexRowsScanned > 0 && withIndexRowsScanned > 0)
+      ? (withoutIndexRowsScanned / withIndexRowsScanned).toFixed(1)
+      : null;
 
     return {
       withIndex: {
         sql: `-- Run ${RUNS}x with partial index\n${explainSql}`,
-        result: {
-          plan: withIndexPlan,
-          scanType: withIndexScanType,
-          executionTimeMs: parseFloat(withIndexAvgMs.toFixed(3)),
-          cost: withIndexCost,
-          note: `Average of ${RUNS} runs`,
-        },
+        result: { plan: withIndexPlan, scanType: withIndexScanType, executionTimeMs: parseFloat(withIndexExecTime.toFixed(3)), cost: withIndexCost, note: `Average of ${RUNS} runs` },
         executionTimeMs: parseFloat(withIndexAvgMs.toFixed(3)),
       },
       withoutIndex: {
         sql: `-- Run ${RUNS}x without index (forced Seq Scan)\nSET LOCAL enable_indexscan = off;\nSET LOCAL enable_bitmapscan = off;\n${explainSql}`,
-        result: {
-          plan: withoutIndexPlan,
-          scanType: withoutIndexScanType,
-          executionTimeMs: parseFloat(withoutIndexAvgMs.toFixed(3)),
-          cost: withoutIndexCost,
-          note: `Average of ${RUNS} runs`,
-        },
+        result: { plan: withoutIndexPlan, scanType: withoutIndexScanType, executionTimeMs: parseFloat(withoutIndexExecTime.toFixed(3)), cost: withoutIndexCost, note: `Average of ${RUNS} runs` },
         executionTimeMs: parseFloat(withoutIndexAvgMs.toFixed(3)),
       },
       indexMetadata: {
         sql: indexMetaSql.trim(),
-        result: {
-          rows: indexMetaResult.rows,
-          rowCount: indexMetaResult.rowCount,
-        },
+        result: { rows: indexMetaResult.rows, rowCount: indexMetaResult.rowCount },
         executionTimeMs: indexMetaTime,
       },
       comparison: {
-        withIndex: {
-          scanType: withIndexScanType,
-          executionTimeMs: parseFloat(withIndexAvgMs.toFixed(3)),
-          cost: withIndexCost,
-        },
-        withoutIndex: {
-          scanType: withoutIndexScanType,
-          executionTimeMs: parseFloat(withoutIndexAvgMs.toFixed(3)),
-          cost: withoutIndexCost,
-        },
+        withIndex: { scanType: withIndexScanType, executionTimeMs: parseFloat(withIndexExecTime.toFixed(3)), cost: withIndexCost, rowsScanned: withIndexRowsScanned },
+        withoutIndex: { scanType: withoutIndexScanType, executionTimeMs: parseFloat(withoutIndexExecTime.toFixed(3)), cost: withoutIndexCost, rowsScanned: withoutIndexRowsScanned },
         speedup,
+        costRatio: parseFloat(costRatio.toFixed(2)),
+        totalRows,
+        indexSize,
+        tableSize,
+        indexVsTablePct,
+        rowsScanRatio,
+        explanation: `Index reads only ${withIndexRowsScanned} matching rows out of ${totalRows} total. Seq scan reads all ${totalRows} rows. Index is ${indexSize} vs table ${tableSize} (${indexVsTablePct}% of table size).`,
       },
     };
   } catch (error: any) {

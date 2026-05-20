@@ -50,7 +50,7 @@ export default function CustomerOrdersPage() {
               {orders.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No orders</TableCell></TableRow> :
               orders.map((o) => (
                 <TableRow key={o.order_id}>
-                  <TableCell className="font-mono">#{o.order_id}</TableCell>
+                  <TableCell className="font-mono">#{o.customer_order_id}</TableCell>
                   <TableCell className="font-medium">{o.customer_name}</TableCell>
                   <TableCell><Badge variant={statusVariant[o.status] as any}>{o.status}</Badge></TableCell>
                   <TableCell className="text-right font-mono">{Number(o.total_amount).toLocaleString()}đ</TableCell>
@@ -58,9 +58,9 @@ export default function CustomerOrdersPage() {
                   <TableCell className="text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {o.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.order_id, 'confirmed')}>Confirm</Button>}
-                      {o.status === 'confirmed' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.order_id, 'processing')}>Process</Button>}
-                      {o.status === 'processing' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.order_id, 'shipped')}>Ship</Button>}
+                      {o.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.customer_order_id, 'confirmed')}>Confirm</Button>}
+                      {o.status === 'confirmed' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.customer_order_id, 'processing')}>Process</Button>}
+                      {o.status === 'processing' && <Button variant="ghost" size="sm" onClick={() => handleStatus(o.customer_order_id, 'shipped')}>Ship</Button>}
                       <Button variant="ghost" size="sm" onClick={() => setShowPayment(o)}>Pay</Button>
                     </div>
                   </TableCell>
@@ -72,8 +72,8 @@ export default function CustomerOrdersPage() {
         <Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(p) => setPagination(prev => ({ ...prev, page: p }))} />
         </Card>
       )}
-      {showPayment && <Modal isOpen={!!showPayment} onClose={() => setShowPayment(null)} title={`Payment — Order #${showPayment.order_id}`} size="sm">
-        <PaymentForm orderId={showPayment.order_id} onSuccess={() => { setShowPayment(null); loadOrders(); }} onError={setError} />
+      {showPayment && <Modal isOpen={!!showPayment} onClose={() => setShowPayment(null)} title={`Payment — Order #${showPayment.customer_order_id}`} size="sm">
+        <PaymentForm orderId={showPayment.customer_order_id} onSuccess={() => { setShowPayment(null); loadOrders(); }} onError={setError} />
       </Modal>}
     </div>
   );

@@ -1,7 +1,8 @@
 import apiClient from './client';
 
 export interface CustomerOrder {
-  order_id: number;
+  customer_order_id: number;
+  order_id?: number; // alias for compatibility
   customer_name: string;
   status: string;
   total_amount: number;
