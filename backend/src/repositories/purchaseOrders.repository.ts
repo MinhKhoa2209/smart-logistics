@@ -1,10 +1,6 @@
 import { PoolClient } from 'pg';
 import { query } from '../config/database';
 
-/**
- * Purchase Orders repository — handles all database queries for the purchase orders domain.
- */
-
 export interface PurchaseOrderRow {
   order_id: number;
   supplier_id: number;
@@ -41,10 +37,7 @@ interface FindAllOptions {
   supplier_id?: number;
 }
 
-/**
- * Find all purchase orders with pagination and optional filters.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: PurchaseOrderRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: PurchaseOrderRow[]; total: number; }> {
   const { page, pageSize, status, supplier_id } = options;
   const offset = (page - 1) * pageSize;
 
@@ -66,14 +59,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Purchase
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM purchase_orders po ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with supplier, warehouse, and user joins
   const dataSql = `
-    SELECT 
+    SELECT
       po.order_id,
       po.supplier_id,
       s.name as supplier_name,
@@ -100,12 +91,9 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Purchase
   return { rows: dataResult.rows, total };
 }
 
-/**
- * Find a purchase order by ID with its items.
- */
 export async function findById(orderId: number): Promise<PurchaseOrderDetailRow | null> {
   const orderSql = `
-    SELECT 
+    SELECT
       po.order_id,
       po.supplier_id,
       s.name as supplier_name,
@@ -130,9 +118,8 @@ export async function findById(orderId: number): Promise<PurchaseOrderDetailRow 
     return null;
   }
 
-  // Get order items
   const itemsSql = `
-    SELECT 
+    SELECT
       oi.order_item_id,
       oi.order_id,
       oi.product_id,
@@ -154,10 +141,6 @@ export async function findById(orderId: number): Promise<PurchaseOrderDetailRow 
   };
 }
 
-/**
- * Create a purchase order and its items within a transaction.
- * The client must already have an open transaction (BEGIN issued by caller).
- */
 export async function createWithItems(
   client: PoolClient,
   data: {
@@ -166,16 +149,15 @@ export async function createWithItems(
     total_amount: number;
     notes?: string | null;
   },
-  items: Array<{ product_id: number; ordered_quantity: number; unit_cost: number }>
+  items: Array<{ product_id: number; ordered_quantity: number; unit_cost: number; }>
 ): Promise<number> {
-  // Insert purchase order
   const orderSql = `
     INSERT INTO purchase_orders (supplier_id, warehouse_id, status, total_amount, notes)
     VALUES ($1, $2, 'pending', $3, $4)
     RETURNING order_id
   `;
 
-  const orderResult = await client.query<{ order_id: number }>(orderSql, [
+  const orderResult = await client.query<{ order_id: number; }>(orderSql, [
     data.supplier_id,
     data.warehouse_id,
     data.total_amount,
@@ -184,7 +166,6 @@ export async function createWithItems(
 
   const orderId = orderResult.rows[0].order_id;
 
-  // Insert order items
   for (const item of items) {
     const itemSql = `
       INSERT INTO order_items (order_id, product_id, ordered_quantity, received_quantity, unit_cost)
@@ -196,16 +177,12 @@ export async function createWithItems(
   return orderId;
 }
 
-/**
- * Get order items for a specific purchase order (used during receiving).
- * Uses the provided client to participate in the same transaction.
- */
 export async function getOrderItems(
   client: PoolClient,
   orderId: number
 ): Promise<OrderItemRow[]> {
   const sql = `
-    SELECT 
+    SELECT
       oi.order_item_id,
       oi.order_id,
       oi.product_id,
@@ -223,9 +200,6 @@ export async function getOrderItems(
   return result.rows;
 }
 
-/**
- * Update received_quantity for an order item within a transaction.
- */
 export async function updateReceivedQuantity(
   client: PoolClient,
   orderItemId: number,
@@ -239,9 +213,6 @@ export async function updateReceivedQuantity(
   await client.query(sql, [additionalQuantity, orderItemId]);
 }
 
-/**
- * Insert a stock movement for inbound receiving within a transaction.
- */
 export async function insertInboundMovement(
   client: PoolClient,
   data: {
@@ -263,9 +234,6 @@ export async function insertInboundMovement(
   ]);
 }
 
-/**
- * Update purchase order status within a transaction.
- */
 export async function updateStatus(
   client: PoolClient,
   orderId: number,
@@ -279,14 +247,11 @@ export async function updateStatus(
   await client.query(sql, [status, orderId]);
 }
 
-/**
- * Get the warehouse_id for a purchase order (used during receiving).
- */
 export async function getOrderWarehouseId(
   client: PoolClient,
   orderId: number
 ): Promise<number | null> {
   const sql = `SELECT warehouse_id FROM purchase_orders WHERE order_id = $1`;
-  const result = await client.query<{ warehouse_id: number }>(sql, [orderId]);
+  const result = await client.query<{ warehouse_id: number; }>(sql, [orderId]);
   return result.rows.length > 0 ? result.rows[0].warehouse_id : null;
 }

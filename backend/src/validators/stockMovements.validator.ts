@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Stock Movements module request validation.
- */
-
-// Valid movement types matching the PostgreSQL enum
 const movementTypes = [
   'inbound',
   'outbound',
@@ -15,7 +10,6 @@ const movementTypes = [
   'damaged',
 ] as const;
 
-// Schema for stock movements list query filters
 export const stockMovementsFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),

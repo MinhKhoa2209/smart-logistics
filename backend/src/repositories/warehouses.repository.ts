@@ -42,9 +42,6 @@ interface ListFilters {
   is_active?: boolean;
 }
 
-/**
- * Get all warehouses with manager name (JOIN with users table).
- */
 export async function findAll(filters: ListFilters = {}): Promise<WarehouseListItem[]> {
   const conditions: string[] = [];
   const params: any[] = [];
@@ -81,9 +78,6 @@ export async function findAll(filters: ListFilters = {}): Promise<WarehouseListI
   return result.rows;
 }
 
-/**
- * Get a single warehouse by ID with all fields.
- */
 export async function findById(warehouseId: number): Promise<WarehouseDetail | null> {
   const sql = `
     SELECT
@@ -108,16 +102,12 @@ export async function findById(warehouseId: number): Promise<WarehouseDetail | n
   return result.rows[0] || null;
 }
 
-/**
- * Get all inventory records for a specific warehouse including product name and lot number.
- * Uses queryWithContext() so RLS policy on inventory evaluates correctly.
- */
 export async function findInventoryByWarehouseId(
   warehouseId: number,
   page: number = 1,
   pageSize: number = 50,
   userId: number = 1
-): Promise<{ items: WarehouseInventoryItem[]; total: number }> {
+): Promise<{ items: WarehouseInventoryItem[]; total: number; }> {
   const offset = (Math.max(1, page) - 1) * pageSize;
 
   const countSql = `
@@ -145,7 +135,7 @@ export async function findInventoryByWarehouseId(
   `;
 
   const [countResult, dataResult] = await Promise.all([
-    queryWithContext<{ total: string }>(countSql, [warehouseId], userId),
+    queryWithContext<{ total: string; }>(countSql, [warehouseId], userId),
     queryWithContext<WarehouseInventoryItem>(dataSql, [warehouseId, pageSize, offset], userId),
   ]);
 
@@ -153,9 +143,6 @@ export async function findInventoryByWarehouseId(
   return { items: dataResult.rows, total };
 }
 
-/**
- * Create a new warehouse.
- */
 export async function create(data: {
   name: string;
   warehouse_type: string;

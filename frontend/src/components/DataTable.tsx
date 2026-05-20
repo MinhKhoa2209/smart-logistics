@@ -65,14 +65,12 @@ export function DataTable<T>({
       if (aVal == null) return 1;
       if (bVal == null) return -1;
 
-      let comparison = 0;
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        comparison = aVal.localeCompare(bVal);
-      } else if (typeof aVal === 'number' && typeof bVal === 'number') {
-        comparison = aVal - bVal;
-      } else {
-        comparison = String(aVal).localeCompare(String(bVal));
-      }
+      const comparison =
+        typeof aVal === 'string' && typeof bVal === 'string'
+          ? aVal.localeCompare(bVal)
+          : typeof aVal === 'number' && typeof bVal === 'number'
+            ? aVal - bVal
+            : String(aVal).localeCompare(String(bVal));
 
       return activeSort.direction === 'asc' ? comparison : -comparison;
     });

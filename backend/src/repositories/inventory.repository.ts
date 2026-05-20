@@ -1,12 +1,5 @@
 import { queryWithContext } from '../middleware/appContext';
 
-/**
- * Inventory repository — handles all database queries for the inventory domain.
- *
- * All queries run inside a transaction with SET LOCAL app.current_user_id so that
- * RLS policies on the inventory table can correctly identify the current user.
- */
-
 export interface InventoryRow {
   inventory_id: number;
   warehouse_id: number;
@@ -27,18 +20,11 @@ interface FindAllOptions {
   pageSize: number;
   warehouse_id?: number;
   low_stock?: boolean;
-  /** The user_id to set as app context for RLS evaluation. Defaults to 1. */
+
   userId?: number;
 }
 
-/**
- * Find all inventory records with pagination, warehouse filter, and low-stock filter.
- * Uses idx_inventory_low_stock partial index when filtering for low-stock items.
- *
- * Runs inside a transaction with SET LOCAL app.current_user_id so RLS policies
- * restrict rows to what the current user is allowed to see.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: InventoryRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: InventoryRow[]; total: number; }> {
   const { page, pageSize, warehouse_id, low_stock, userId = 1 } = options;
   const offset = (page - 1) * pageSize;
 
@@ -53,18 +39,15 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Inventor
   }
 
   if (low_stock) {
-    // Matches the idx_inventory_low_stock partial index (WHERE quantity <= reorder_point)
     conditions.push(`i.quantity <= i.reorder_point`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query — runs with RLS context so it only counts visible rows
   const countSql = `SELECT COUNT(*) as total FROM inventory i ${whereClause}`;
-  const countResult = await queryWithContext<{ total: string }>(countSql, params, userId);
+  const countResult = await queryWithContext<{ total: string; }>(countSql, params, userId);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with product, warehouse, and lot joins
   const dataSql = `
     SELECT
       i.inventory_id,

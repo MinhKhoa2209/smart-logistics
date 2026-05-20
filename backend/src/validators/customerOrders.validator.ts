@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Customer Orders module request validation.
- */
-
-// Allowed customer order status values for update
 const customerOrderStatusEnum = z.enum([
   'pending',
   'confirmed',
@@ -15,12 +10,10 @@ const customerOrderStatusEnum = z.enum([
   'refunded',
 ]);
 
-// Schema for updating customer order status
 export const updateCustomerOrderStatusSchema = z.object({
   status: customerOrderStatusEnum,
 });
 
-// Allowed payment methods
 const paymentMethodEnum = z.enum([
   'cash',
   'bank_transfer',
@@ -29,13 +22,11 @@ const paymentMethodEnum = z.enum([
   'other',
 ]);
 
-// Schema for recording a payment
 export const createPaymentSchema = z.object({
   amount: z.number().positive('Amount must be greater than zero'),
   payment_method: paymentMethodEnum,
 });
 
-// Schema for customer order list query filters
 export const customerOrderFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),
@@ -43,7 +34,6 @@ export const customerOrderFilterSchema = z.object({
   payment_status: z.string().optional(),
 });
 
-// Schema for customer order ID param
 export const customerOrderIdParamSchema = z.object({
   id: z.string().regex(/^\d+$/, 'Customer order ID must be a number'),
 });

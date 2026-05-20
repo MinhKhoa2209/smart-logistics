@@ -2,10 +2,6 @@ import { query } from '../config/database';
 import { queryWithContext } from '../middleware/appContext';
 import { CreateProductInput, UpdateProductInput } from '../validators/products.validator';
 
-/**
- * Products repository — handles all database queries for the products domain.
- */
-
 export interface ProductRow {
   product_id: number;
   sku: string;
@@ -45,10 +41,7 @@ interface FindAllOptions {
   supplier_id?: number;
 }
 
-/**
- * Find all products with pagination, text search, and filters.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: ProductRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: ProductRow[]; total: number; }> {
   const { page, pageSize, search, category, supplier_id } = options;
   const offset = (page - 1) * pageSize;
 
@@ -76,14 +69,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: ProductR
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM products p ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with supplier join
   const dataSql = `
-    SELECT 
+    SELECT
       p.product_id,
       p.sku,
       p.name,
@@ -109,12 +100,9 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: ProductR
   return { rows: dataResult.rows, total };
 }
 
-/**
- * Find a product by ID with inventory across warehouses.
- */
 export async function findById(productId: number): Promise<ProductDetailRow | null> {
   const productSql = `
-    SELECT 
+    SELECT
       p.product_id,
       p.sku,
       p.name,
@@ -138,7 +126,6 @@ export async function findById(productId: number): Promise<ProductDetailRow | nu
     return null;
   }
 
-  // Get inventory across warehouses — uses queryWithContext so RLS evaluates correctly
   const inventorySql = `
     SELECT
       i.inventory_id,
@@ -164,9 +151,6 @@ export async function findById(productId: number): Promise<ProductDetailRow | nu
   };
 }
 
-/**
- * Create a new product.
- */
 export async function create(data: CreateProductInput): Promise<ProductRow> {
   const sql = `
     INSERT INTO products (sku, name, category, unit, unit_cost, unit_price, min_stock_level, supplier_id, is_active)
@@ -188,14 +172,10 @@ export async function create(data: CreateProductInput): Promise<ProductRow> {
 
   const result = await query<ProductRow>(sql, params);
 
-  // Fetch with supplier name
   const productWithSupplier = await findById(result.rows[0].product_id);
   return productWithSupplier!;
 }
 
-/**
- * Update an existing product.
- */
 export async function update(productId: number, data: UpdateProductInput): Promise<ProductRow | null> {
   const fields: string[] = [];
   const params: any[] = [];
@@ -251,11 +231,10 @@ export async function update(productId: number, data: UpdateProductInput): Promi
 
   params.push(productId);
 
-  const result = await query<{ product_id: number }>(sql, params);
+  const result = await query<{ product_id: number; }>(sql, params);
   if (result.rows.length === 0) {
     return null;
   }
 
-  // Fetch updated product with supplier name
   return findById(productId) as Promise<ProductRow | null>;
 }

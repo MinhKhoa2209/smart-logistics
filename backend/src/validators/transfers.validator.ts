@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Transfer Orders module request validation.
- */
-
-// Schema for creating a new transfer order
 export const createTransferSchema = z.object({
   from_warehouse_id: z.number().int().positive('Source warehouse ID is required'),
   to_warehouse_id: z.number().int().positive('Destination warehouse ID is required'),
@@ -13,7 +8,6 @@ export const createTransferSchema = z.object({
   lot_id: z.number().int().positive('Lot ID must be a positive integer').nullable().optional(),
 });
 
-// Schema for transfer list query filters
 export const transferFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),

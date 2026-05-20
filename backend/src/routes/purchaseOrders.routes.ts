@@ -10,10 +10,6 @@ import * as purchaseOrdersService from '../services/purchaseOrders.service';
 
 const router = Router();
 
-/**
- * GET /api/purchase-orders
- * Paginated list of purchase orders with optional status and supplier filters.
- */
 router.get(
   '/',
   validate({ query: purchaseOrderFilterSchema }),
@@ -32,10 +28,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/purchase-orders
- * Create a new purchase order with items (transactional).
- */
 router.post(
   '/',
   validate({ body: createPurchaseOrderSchema }),
@@ -49,11 +41,6 @@ router.post(
   }
 );
 
-/**
- * POST /api/purchase-orders/:id/receive
- * Receive goods against a purchase order (transactional).
- * Validates over-receiving and updates PO status.
- */
 router.post(
   '/:id/receive',
   validate({ params: purchaseOrderIdParamSchema, body: receivePurchaseOrderSchema }),

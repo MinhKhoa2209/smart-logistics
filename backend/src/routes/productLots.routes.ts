@@ -5,11 +5,6 @@ import * as productLotsService from '../services/productLots.service';
 
 const router = Router();
 
-/**
- * GET /api/lots
- * Paginated list of all product lots ordered by expiry_date ASC (FIFO).
- * Includes product name, supplier name, and inventory quantities across warehouses.
- */
 router.get(
   '/',
   validate({ query: productLotsFilterSchema }),
@@ -26,11 +21,6 @@ router.get(
   }
 );
 
-/**
- * GET /api/lots/expiring
- * Lots expiring within 30 days using idx_product_lots_expiry partial index.
- * Includes expiry classification: 'critical' (≤7 days), 'warning' (8-30 days).
- */
 router.get(
   '/expiring',
   validate({ query: expiringLotsFilterSchema }),

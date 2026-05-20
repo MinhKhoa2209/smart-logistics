@@ -5,10 +5,6 @@ import * as inventoryService from '../services/inventory.service';
 
 const router = Router();
 
-/**
- * GET /api/inventory
- * Paginated cross-warehouse inventory list (50/page) with warehouse and low-stock filters.
- */
 router.get(
   '/',
   validate({ query: inventoryFilterSchema }),

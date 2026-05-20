@@ -10,10 +10,6 @@ import * as shipmentsService from '../services/shipments.service';
 
 const router = Router();
 
-/**
- * GET /api/shipments
- * Paginated list of shipments with optional status and warehouse filters.
- */
 router.get(
   '/',
   validate({ query: shipmentFilterSchema }),
@@ -32,10 +28,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/shipments
- * Create a new shipment with items (transactional with inventory validation).
- */
 router.post(
   '/',
   validate({ body: createShipmentSchema }),
@@ -49,10 +41,6 @@ router.post(
   }
 );
 
-/**
- * PATCH /api/shipments/:id/status
- * Update shipment status (validates allowed transitions).
- */
 router.patch(
   '/:id/status',
   validate({ params: shipmentIdParamSchema, body: updateShipmentStatusSchema }),

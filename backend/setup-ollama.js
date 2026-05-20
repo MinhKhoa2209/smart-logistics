@@ -1,26 +1,19 @@
-/**
- * Setup script: Pull nomic-embed-text model and generate bilingual embeddings.
- * Uses Vietnamese name + English translation for better semantic search accuracy.
- * Run: docker exec smartlogistic-backend node /app/setup-ollama.js
- */
 const { Pool } = require('pg');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434';
 const MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// Bilingual product descriptions — Vietnamese name + English keywords
-// nomic-embed-text is primarily English-trained, so adding English improves accuracy
 const PRODUCT_DESCRIPTIONS = {
-  1:  'Laptop Dell Latitude 5540 i7 | laptop computer notebook portable PC Electronics',
-  2:  'Samsung Galaxy Tab S9 FE 128GB | tablet android samsung Electronics',
-  3:  'Tai nghe Sony WH-1000XM5 | headphones wireless noise cancelling Sony Electronics',
-  4:  'Chuột Logitech MX Master 3S | mouse wireless logitech computer peripheral Electronics',
-  5:  'Bàn phím cơ Keychron K8 Pro | mechanical keyboard keychron Electronics',
-  6:  'Màn hình LG 27" 4K IPS | monitor display screen LG 4K Electronics',
-  7:  'Webcam Logitech C920 HD Pro | webcam camera video conference Electronics',
-  8:  'USB Hub Anker 7-in-1 | USB hub adapter port splitter Electronics',
-  9:  'Cà phê Trung Nguyên Legend 500g | coffee ca phe vietnamese coffee Food & Beverage',
+  1: 'Laptop Dell Latitude 5540 i7 | laptop computer notebook portable PC Electronics',
+  2: 'Samsung Galaxy Tab S9 FE 128GB | tablet android samsung Electronics',
+  3: 'Tai nghe Sony WH-1000XM5 | headphones wireless noise cancelling Sony Electronics',
+  4: 'Chuột Logitech MX Master 3S | mouse wireless logitech computer peripheral Electronics',
+  5: 'Bàn phím cơ Keychron K8 Pro | mechanical keyboard keychron Electronics',
+  6: 'Màn hình LG 27" 4K IPS | monitor display screen LG 4K Electronics',
+  7: 'Webcam Logitech C920 HD Pro | webcam camera video conference Electronics',
+  8: 'USB Hub Anker 7-in-1 | USB hub adapter port splitter Electronics',
+  9: 'Cà phê Trung Nguyên Legend 500g | coffee ca phe vietnamese coffee Food & Beverage',
   10: 'Trà Oolong Phúc Long 200g | tea oolong tra vietnamese tea Food & Beverage',
   11: 'Nước mắm Phú Quốc 40° 500ml | fish sauce nuoc mam condiment Food & Beverage',
   12: 'Dầu ăn Neptune 5L | cooking oil vegetable oil dau an Food & Beverage',
@@ -53,10 +46,11 @@ async function pullModel() {
 }
 
 async function generateEmbedding(text) {
+  const prefixedText = `search_document: ${text}`;
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, input: text }),
+    body: JSON.stringify({ model: MODEL, input: prefixedText }),
   });
   if (!res.ok) throw new Error(`Embed failed: ${res.status}`);
   const data = await res.json();
@@ -64,20 +58,16 @@ async function generateEmbedding(text) {
 }
 
 async function main() {
-  // Ensure pgvector extension and embedding column exist
   await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
   await pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768)');
   await pool.query('DROP INDEX IF EXISTS idx_products_embedding');
 
-  // Pull model first
   await pullModel();
 
-  // Get all products
   const { rows } = await pool.query('SELECT product_id, name, category FROM products WHERE is_active = true');
   console.log(`\nGenerating bilingual embeddings for ${rows.length} products...`);
 
   for (const p of rows) {
-    // Use bilingual description if available, otherwise fallback to name + category
     const text = PRODUCT_DESCRIPTIONS[p.product_id] || `${p.name} | ${p.category || ''}`;
     try {
       const emb = await generateEmbedding(text);
@@ -92,7 +82,6 @@ async function main() {
     }
   }
 
-  // Create IVFFlat index for fast approximate nearest neighbor search
   console.log('\nCreating vector index...');
   await pool.query(`
     CREATE INDEX idx_products_embedding ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 5)

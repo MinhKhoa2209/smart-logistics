@@ -10,7 +10,6 @@ const server = app.listen(PORT, () => {
   console.log(`Smart Logistics API server running on port ${PORT}`);
 });
 
-// Graceful shutdown helper
 async function gracefulShutdown(signal: string) {
   console.log(`${signal} received. Shutting down gracefully...`);
   server.close(async () => {
@@ -19,7 +18,6 @@ async function gracefulShutdown(signal: string) {
     process.exit(0);
   });
 
-  // Force shutdown after 10 seconds if graceful shutdown hangs
   setTimeout(() => {
     console.error('Forced shutdown after timeout.');
     process.exit(1);

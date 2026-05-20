@@ -1,10 +1,6 @@
 import { PoolClient } from 'pg';
 import { query } from '../config/database';
 
-/**
- * Shipments repository — handles all database queries for the shipments domain.
- */
-
 export interface ShipmentRow {
   shipment_id: number;
   origin_warehouse_id: number;
@@ -38,10 +34,7 @@ interface FindAllOptions {
   origin_warehouse_id?: number;
 }
 
-/**
- * Find all shipments with pagination and optional filters.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: ShipmentRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: ShipmentRow[]; total: number; }> {
   const { page, pageSize, status, origin_warehouse_id } = options;
   const offset = (page - 1) * pageSize;
 
@@ -63,13 +56,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Shipment
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM shipments s ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
   const dataSql = `
-    SELECT 
+    SELECT
       s.shipment_id,
       s.origin_warehouse_id,
       w.name as origin_warehouse_name,
@@ -92,12 +84,9 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Shipment
   return { rows: dataResult.rows, total };
 }
 
-/**
- * Find a shipment by ID with its items.
- */
 export async function findById(shipmentId: number): Promise<ShipmentDetailRow | null> {
   const shipmentSql = `
-    SELECT 
+    SELECT
       s.shipment_id,
       s.origin_warehouse_id,
       w.name as origin_warehouse_name,
@@ -118,9 +107,8 @@ export async function findById(shipmentId: number): Promise<ShipmentDetailRow | 
     return null;
   }
 
-  // Get shipment items
   const itemsSql = `
-    SELECT 
+    SELECT
       si.shipment_item_id,
       si.shipment_id,
       si.product_id,
@@ -141,10 +129,6 @@ export async function findById(shipmentId: number): Promise<ShipmentDetailRow | 
   };
 }
 
-/**
- * Check available inventory for a product in a specific warehouse.
- * Returns the total available quantity across all lots.
- */
 export async function getAvailableInventory(
   client: PoolClient,
   warehouseId: number,
@@ -155,13 +139,10 @@ export async function getAvailableInventory(
     FROM inventory
     WHERE warehouse_id = $1 AND product_id = $2
   `;
-  const result = await client.query<{ available: string }>(sql, [warehouseId, productId]);
+  const result = await client.query<{ available: string; }>(sql, [warehouseId, productId]);
   return parseInt(result.rows[0].available, 10);
 }
 
-/**
- * Create a shipment record within a transaction.
- */
 export async function createShipment(
   client: PoolClient,
   data: {
@@ -177,7 +158,7 @@ export async function createShipment(
     RETURNING shipment_id
   `;
 
-  const result = await client.query<{ shipment_id: number }>(sql, [
+  const result = await client.query<{ shipment_id: number; }>(sql, [
     data.origin_warehouse_id,
     data.destination_address,
     data.carrier,
@@ -187,9 +168,6 @@ export async function createShipment(
   return result.rows[0].shipment_id;
 }
 
-/**
- * Insert a shipment item within a transaction.
- */
 export async function createShipmentItem(
   client: PoolClient,
   data: {
@@ -206,9 +184,6 @@ export async function createShipmentItem(
   await client.query(sql, [data.shipment_id, data.product_id, data.quantity, data.unit_price]);
 }
 
-/**
- * Insert an outbound stock movement within a transaction.
- */
 export async function insertOutboundMovement(
   client: PoolClient,
   data: {
@@ -230,22 +205,15 @@ export async function insertOutboundMovement(
   ]);
 }
 
-/**
- * Get the current status of a shipment within a transaction.
- */
 export async function getShipmentStatus(
   client: PoolClient,
   shipmentId: number
 ): Promise<string | null> {
   const sql = `SELECT status FROM shipments WHERE shipment_id = $1`;
-  const result = await client.query<{ status: string }>(sql, [shipmentId]);
+  const result = await client.query<{ status: string; }>(sql, [shipmentId]);
   return result.rows.length > 0 ? result.rows[0].status : null;
 }
 
-/**
- * Update shipment status within a transaction.
- * Sets delivered_at when transitioning to 'delivered'.
- */
 export async function updateStatus(
   client: PoolClient,
   shipmentId: number,
@@ -274,14 +242,11 @@ export async function updateStatus(
   await client.query(sql, params);
 }
 
-/**
- * Get the unit_price for a product (used when creating shipment items).
- */
 export async function getProductUnitPrice(
   client: PoolClient,
   productId: number
 ): Promise<number> {
   const sql = `SELECT COALESCE(unit_price, 0) as unit_price FROM products WHERE product_id = $1`;
-  const result = await client.query<{ unit_price: string }>(sql, [productId]);
+  const result = await client.query<{ unit_price: string; }>(sql, [productId]);
   return result.rows.length > 0 ? parseFloat(result.rows[0].unit_price) : 0;
 }

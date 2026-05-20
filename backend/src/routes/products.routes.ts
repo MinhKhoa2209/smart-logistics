@@ -12,10 +12,6 @@ import * as semanticSearchService from '../services/semanticSearch.service';
 
 const router = Router();
 
-/**
- * GET /api/products
- * Paginated list with text search, category, and supplier filters.
- */
 router.get(
   '/',
   validate({ query: productFilterSchema }),
@@ -35,10 +31,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/products/semantic-search
- * pgvector cosine similarity search using natural language query.
- */
 router.post(
   '/semantic-search',
   validate({ body: semanticSearchSchema }),
@@ -52,10 +44,6 @@ router.post(
   }
 );
 
-/**
- * GET /api/products/:id
- * Product detail with inventory across warehouses.
- */
 router.get(
   '/:id',
   validate({ params: productIdParamSchema }),
@@ -70,10 +58,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/products
- * Create a new product.
- */
 router.post(
   '/',
   validate({ body: createProductSchema }),
@@ -87,10 +71,6 @@ router.post(
   }
 );
 
-/**
- * PUT /api/products/:id
- * Update an existing product.
- */
 router.put(
   '/:id',
   validate({ params: productIdParamSchema, body: updateProductSchema }),

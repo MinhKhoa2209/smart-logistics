@@ -1,33 +1,18 @@
-/**
- * Vector embedding generation using Ollama (local, no API key required).
- * Uses nomic-embed-text model which produces 768-dimensional embeddings.
- *
- * nomic-embed-text uses task-specific prefixes for better accuracy:
- *   - "search_document: " for indexing documents (products)
- *   - "search_query: "    for search queries (user input)
- *
- * Ollama runs as a sidecar container accessed via OLLAMA_URL env var.
- */
-
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
-/**
- * Generate a vector embedding for a search query.
- * Uses "search_query:" prefix for nomic-embed-text to improve retrieval accuracy.
- */
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new Error('Input text cannot be empty for embedding generation.');
   }
-  return callOllama(text.trim());
+  return callOllama(`search_query: ${text.trim()}`);
 }
 
 export async function generateDocumentEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new Error('Input text cannot be empty for embedding generation.');
   }
-  return callOllama(text.trim());
+  return callOllama(`search_document: ${text.trim()}`);
 }
 
 async function callOllama(input: string): Promise<number[]> {

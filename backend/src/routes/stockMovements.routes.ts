@@ -5,11 +5,6 @@ import * as stockMovementsService from '../services/stockMovements.service';
 
 const router = Router();
 
-/**
- * GET /api/stock-movements
- * Paginated stock movements list (20/page) with date range and movement_type filters.
- * Date range filters enable partition pruning on the partitioned stock_movements table.
- */
 router.get(
   '/',
   validate({ query: stockMovementsFilterSchema }),

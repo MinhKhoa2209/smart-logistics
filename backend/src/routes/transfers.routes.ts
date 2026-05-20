@@ -8,10 +8,6 @@ import * as transfersService from '../services/transfers.service';
 
 const router = Router();
 
-/**
- * GET /api/transfers
- * Paginated list of transfer orders with optional status and warehouse filters.
- */
 router.get(
   '/',
   validate({ query: transferFilterSchema }),
@@ -31,15 +27,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/transfers
- * Create and execute an inter-warehouse transfer.
- * Calls move_stock_advanced() with pessimistic locking.
- * 
- * Success: 201 with transfer order details
- * Insufficient stock (P0001): 400 with available quantity info
- * Lock timeout (55P03): 503 with retry_after_ms
- */
 router.post(
   '/',
   validate({ body: createTransferSchema }),

@@ -9,7 +9,6 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-# Production image
 FROM node:24-alpine
 
 WORKDIR /app

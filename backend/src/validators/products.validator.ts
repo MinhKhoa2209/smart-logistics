@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Products module request validation.
- */
-
-// Schema for creating a new product
 export const createProductSchema = z.object({
   sku: z.string().min(1, 'SKU is required').max(50),
   name: z.string().min(1, 'Name is required').max(255),
@@ -17,7 +12,6 @@ export const createProductSchema = z.object({
   is_active: z.boolean().optional().default(true),
 });
 
-// Schema for updating an existing product
 export const updateProductSchema = z.object({
   sku: z.string().min(1, 'SKU is required').max(50).optional(),
   name: z.string().min(1, 'Name is required').max(255).optional(),
@@ -30,7 +24,6 @@ export const updateProductSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-// Schema for product list query filters
 export const productFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),
@@ -39,12 +32,10 @@ export const productFilterSchema = z.object({
   supplier_id: z.string().optional(),
 });
 
-// Schema for product ID param
 export const productIdParamSchema = z.object({
   id: z.string().regex(/^\d+$/, 'Product ID must be a number'),
 });
 
-// Schema for semantic search request body
 export const semanticSearchSchema = z.object({
   query: z
     .string()

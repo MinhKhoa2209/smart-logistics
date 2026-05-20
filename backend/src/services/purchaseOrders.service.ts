@@ -5,10 +5,6 @@ import { withTransaction } from '../utils/transaction';
 import { AppError, parsePgError } from '../middleware';
 import { PurchaseOrderRow, PurchaseOrderDetailRow } from '../repositories/purchaseOrders.repository';
 
-/**
- * Purchase Orders service — business logic coordination for purchase orders.
- */
-
 interface ListPurchaseOrdersOptions {
   page?: string;
   pageSize?: string;
@@ -16,9 +12,6 @@ interface ListPurchaseOrdersOptions {
   supplier_id?: string;
 }
 
-/**
- * Get paginated list of purchase orders with optional filters.
- */
 export async function listPurchaseOrders(
   options: ListPurchaseOrdersOptions
 ): Promise<PaginatedResponse<PurchaseOrderRow>> {
@@ -37,9 +30,6 @@ export async function listPurchaseOrders(
   return formatPaginatedResponse(rows, total, page, pageSize);
 }
 
-/**
- * Get a single purchase order by ID with items.
- */
 export async function getPurchaseOrder(orderId: number): Promise<PurchaseOrderDetailRow> {
   const order = await purchaseOrdersRepository.findById(orderId);
   if (!order) {
@@ -48,14 +38,9 @@ export async function getPurchaseOrder(orderId: number): Promise<PurchaseOrderDe
   return order;
 }
 
-/**
- * Create a new purchase order with items within a single transaction.
- * Calculates total_amount as sum of (ordered_quantity * unit_cost) for all items.
- */
 export async function createPurchaseOrder(
   data: CreatePurchaseOrderInput
 ): Promise<PurchaseOrderDetailRow> {
-  // Calculate total amount
   const totalAmount = data.items.reduce(
     (sum, item) => sum + item.ordered_quantity * item.unit_cost,
     0
@@ -75,7 +60,6 @@ export async function createPurchaseOrder(
       );
     });
 
-    // Fetch the created order with full details
     const order = await purchaseOrdersRepository.findById(orderId);
     return order!;
   } catch (error: any) {
@@ -87,35 +71,26 @@ export async function createPurchaseOrder(
   }
 }
 
-/**
- * Receive goods against a purchase order.
- * Validates over-receiving, updates received quantities, inserts stock movements,
- * and updates PO status within a single transaction.
- */
 export async function receivePurchaseOrder(
   orderId: number,
   data: ReceivePurchaseOrderInput
 ): Promise<PurchaseOrderDetailRow> {
   try {
     await withTransaction(async (client) => {
-      // Get the warehouse_id for this PO
       const warehouseId = await purchaseOrdersRepository.getOrderWarehouseId(client, orderId);
       if (warehouseId === null) {
         throw new AppError(404, 'Purchase order not found');
       }
 
-      // Get current order items
       const orderItems = await purchaseOrdersRepository.getOrderItems(client, orderId);
       if (orderItems.length === 0) {
         throw new AppError(404, 'Purchase order not found');
       }
 
-      // Build a map of order items for quick lookup
       const orderItemMap = new Map(
         orderItems.map((item) => [item.order_item_id, item])
       );
 
-      // Validate each received item and check for over-receiving
       for (const receivedItem of data.items) {
         const orderItem = orderItemMap.get(receivedItem.order_item_id);
         if (!orderItem) {
@@ -135,18 +110,15 @@ export async function receivePurchaseOrder(
         }
       }
 
-      // Update received quantities and insert stock movements
       for (const receivedItem of data.items) {
         const orderItem = orderItemMap.get(receivedItem.order_item_id)!;
 
-        // Update received_quantity
         await purchaseOrdersRepository.updateReceivedQuantity(
           client,
           receivedItem.order_item_id,
           receivedItem.received_quantity
         );
 
-        // Insert inbound stock movement
         await purchaseOrdersRepository.insertInboundMovement(client, {
           product_id: orderItem.product_id,
           warehouse_id: warehouseId,
@@ -155,8 +127,6 @@ export async function receivePurchaseOrder(
         });
       }
 
-      // Determine new PO status based on all items' received vs ordered quantities
-      // Re-fetch items to get updated received_quantity values
       const updatedItems = await purchaseOrdersRepository.getOrderItems(client, orderId);
 
       const allFullyReceived = updatedItems.every(
@@ -170,14 +140,12 @@ export async function receivePurchaseOrder(
       } else if (someReceived) {
         newStatus = 'partially_received';
       } else {
-        // No change needed if nothing received (shouldn't happen given validation)
         return;
       }
 
       await purchaseOrdersRepository.updateStatus(client, orderId, newStatus);
     });
 
-    // Fetch and return the updated order
     const order = await purchaseOrdersRepository.findById(orderId);
     return order!;
   } catch (error: any) {

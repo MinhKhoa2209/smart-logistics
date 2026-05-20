@@ -10,10 +10,6 @@ import * as warehousesService from '../services/warehouses.service';
 
 const router = Router();
 
-/**
- * GET /api/warehouses
- * List all warehouses with optional type and active status filters.
- */
 router.get(
   '/',
   validate({ query: warehouseListQuerySchema }),
@@ -31,16 +27,12 @@ router.get(
   }
 );
 
-/**
- * GET /api/warehouses/:id
- * Get warehouse detail by ID.
- */
 router.get(
   '/:id',
   validate({ params: warehouseIdParamsSchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { id } = req.params as unknown as { id: number };
+      const { id } = req.params as unknown as { id: number; };
       const warehouse = await warehousesService.getWarehouseById(id);
       res.json({ data: warehouse });
     } catch (error) {
@@ -49,16 +41,12 @@ router.get(
   }
 );
 
-/**
- * GET /api/warehouses/:id/inventory
- * Get inventory records for a specific warehouse.
- */
 router.get(
   '/:id/inventory',
   validate({ params: warehouseIdParamsSchema, query: warehouseInventoryQuerySchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { id } = req.params as unknown as { id: number };
+      const { id } = req.params as unknown as { id: number; };
       const { page, pageSize } = req.query as unknown as {
         page?: number;
         pageSize?: number;
@@ -75,10 +63,6 @@ router.get(
   }
 );
 
-/**
- * POST /api/warehouses
- * Create a new warehouse.
- */
 router.post(
   '/',
   validate({ body: createWarehouseSchema }),

@@ -1,10 +1,6 @@
 import { PoolClient } from 'pg';
 import { query } from '../config/database';
 
-/**
- * Customer Orders repository — handles all database queries for the customer orders domain.
- */
-
 export interface CustomerOrderRow {
   customer_order_id: number;
   customer_id: number;
@@ -35,10 +31,7 @@ interface FindAllOptions {
   payment_status?: string;
 }
 
-/**
- * Find all customer orders with pagination and optional filters.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: CustomerOrderRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: CustomerOrderRow[]; total: number; }> {
   const { page, pageSize, status, payment_status } = options;
   const offset = (page - 1) * pageSize;
 
@@ -60,14 +53,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Customer
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM customer_orders co ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with customer and warehouse joins
   const dataSql = `
-    SELECT 
+    SELECT
       co.customer_order_id,
       co.customer_id,
       c.full_name as customer_name,
@@ -92,15 +83,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Customer
   return { rows: dataResult.rows, total };
 }
 
-/**
- * Find a customer order by ID (within a transaction client).
- */
 export async function findById(
   client: PoolClient,
   customerOrderId: number
 ): Promise<CustomerOrderRow | null> {
   const sql = `
-    SELECT 
+    SELECT
       co.customer_order_id,
       co.customer_id,
       c.full_name as customer_name,
@@ -122,15 +110,12 @@ export async function findById(
   return result.rows.length > 0 ? result.rows[0] : null;
 }
 
-/**
- * Get all items for a customer order (within a transaction client).
- */
 export async function getOrderItems(
   client: PoolClient,
   customerOrderId: number
 ): Promise<CustomerOrderItemRow[]> {
   const sql = `
-    SELECT 
+    SELECT
       coi.customer_order_item_id,
       coi.customer_order_id,
       coi.product_id,
@@ -147,10 +132,6 @@ export async function getOrderItems(
   return result.rows;
 }
 
-/**
- * Check available inventory for a product in a specific warehouse.
- * Returns the total available quantity across all lots.
- */
 export async function getAvailableInventory(
   client: PoolClient,
   warehouseId: number,
@@ -161,13 +142,10 @@ export async function getAvailableInventory(
     FROM inventory
     WHERE warehouse_id = $1 AND product_id = $2
   `;
-  const result = await client.query<{ available: string }>(sql, [warehouseId, productId]);
+  const result = await client.query<{ available: string; }>(sql, [warehouseId, productId]);
   return parseInt(result.rows[0].available, 10);
 }
 
-/**
- * Update customer order status within a transaction.
- */
 export async function updateStatus(
   client: PoolClient,
   customerOrderId: number,
@@ -181,10 +159,6 @@ export async function updateStatus(
   await client.query(sql, [newStatus, customerOrderId]);
 }
 
-/**
- * Create a shipment record within a transaction.
- * Returns the new shipment_id.
- */
 export async function createShipment(
   client: PoolClient,
   data: {
@@ -197,16 +171,13 @@ export async function createShipment(
     VALUES ($1, $2, 'pending', 'default', NULL)
     RETURNING shipment_id
   `;
-  const result = await client.query<{ shipment_id: number }>(sql, [
+  const result = await client.query<{ shipment_id: number; }>(sql, [
     data.origin_warehouse_id,
     data.destination_address,
   ]);
   return result.rows[0].shipment_id;
 }
 
-/**
- * Link a shipment to a customer order via shipment_orders table.
- */
 export async function createShipmentOrder(
   client: PoolClient,
   shipmentId: number,
@@ -219,9 +190,6 @@ export async function createShipmentOrder(
   await client.query(sql, [shipmentId, customerOrderId]);
 }
 
-/**
- * Insert an outbound stock movement within a transaction.
- */
 export async function insertOutboundMovement(
   client: PoolClient,
   data: {
@@ -243,9 +211,6 @@ export async function insertOutboundMovement(
   ]);
 }
 
-/**
- * Insert a payment record within a transaction.
- */
 export async function insertPayment(
   client: PoolClient,
   data: {
@@ -253,13 +218,13 @@ export async function insertPayment(
     amount: number;
     payment_method: string;
   }
-): Promise<{ payment_id: number }> {
+): Promise<{ payment_id: number; }> {
   const sql = `
     INSERT INTO payments (customer_order_id, amount, payment_method, payment_status)
     VALUES ($1, $2, $3, 'paid')
     RETURNING payment_id
   `;
-  const result = await client.query<{ payment_id: number }>(sql, [
+  const result = await client.query<{ payment_id: number; }>(sql, [
     data.customer_order_id,
     data.amount,
     data.payment_method,
@@ -267,9 +232,6 @@ export async function insertPayment(
   return result.rows[0];
 }
 
-/**
- * Get the cumulative payment amount for a customer order.
- */
 export async function getCumulativePayments(
   client: PoolClient,
   customerOrderId: number
@@ -279,18 +241,13 @@ export async function getCumulativePayments(
     FROM payments
     WHERE customer_order_id = $1
   `;
-  const result = await client.query<{ total_paid: string }>(sql, [customerOrderId]);
+  const result = await client.query<{ total_paid: string; }>(sql, [customerOrderId]);
   return parseFloat(result.rows[0].total_paid);
 }
 
-/**
- * Update the payment_status of a customer order.
- * Note: payment_status is derived from payments table, no column to update.
- */
 export async function updatePaymentStatus(
   _client: PoolClient,
   _customerOrderId: number,
   _paymentStatus: string
 ): Promise<void> {
-  // payment_status is computed from payments table, no direct column update needed
 }

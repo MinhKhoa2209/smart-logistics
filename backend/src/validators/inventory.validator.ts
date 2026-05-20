@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Inventory module request validation.
- */
-
-// Schema for inventory list query filters
 export const inventoryFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),

@@ -1,16 +1,8 @@
-/**
- * PG Features Demo service — interactive demonstrations of PostgreSQL features.
- * Each demo captures the SQL executed, the result, and execution time in milliseconds.
- */
-
 import { PoolClient } from 'pg';
 import { getClient, query } from '../config/database';
 import { generateEmbedding } from '../utils/embedding';
 import { AppError } from '../middleware';
 
-/**
- * Standard response structure for all PG feature demonstrations.
- */
 export interface DemoExecutionResult {
   sql: string;
   result: unknown;
@@ -18,29 +10,21 @@ export interface DemoExecutionResult {
   error?: string;
 }
 
-/**
- * Module-level store for open demo transaction clients.
- * Keyed by session ID to allow commit/rollback from separate requests.
- */
-const openTransactions = new Map<string, { client: PoolClient; startedAt: number }>();
+const openTransactions = new Map<string, { client: PoolClient; startedAt: number; }>();
 
-// Auto-cleanup stale transactions after 5 minutes
 const TRANSACTION_TIMEOUT_MS = 5 * 60 * 1000;
 
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, entry] of openTransactions.entries()) {
     if (now - entry.startedAt > TRANSACTION_TIMEOUT_MS) {
-      entry.client.query('ROLLBACK').catch(() => {});
+      entry.client.query('ROLLBACK').catch(() => { });
       entry.client.release();
       openTransactions.delete(sessionId);
     }
   }
 }, 60_000);
 
-/**
- * Execute a demo SQL statement and capture timing + results.
- */
 async function executeDemoSql(
   client: PoolClient,
   sql: string,
@@ -69,9 +53,6 @@ async function executeDemoSql(
   }
 }
 
-/**
- * Format SQL with parameter values substituted for display purposes.
- */
 function formatSqlWithParams(sql: string, params?: any[]): string {
   if (!params || params.length === 0) return sql.trim();
   let formatted = sql;
@@ -83,25 +64,10 @@ function formatSqlWithParams(sql: string, params?: any[]): string {
   return formatted.trim();
 }
 
-// ─── Transactions Demo ───────────────────────────────────────────────────────
-
-/**
- * Demonstrates a PO receiving operation within an open transaction.
- * The transaction is kept open until the user explicitly commits or rolls back.
- *
- * Steps:
- * 1. BEGIN
- * 2. UPDATE order_items SET received_quantity
- * 3. INSERT INTO stock_movements (inbound)
- * 4. Transaction remains open — user must call commit or rollback
- *
- * Returns the SQL statements and intermediate results.
- */
 export async function transactionsDemo(sessionId: string): Promise<DemoExecutionResult[]> {
-  // Clean up any existing transaction for this session
   if (openTransactions.has(sessionId)) {
     const existing = openTransactions.get(sessionId)!;
-    await existing.client.query('ROLLBACK').catch(() => {});
+    await existing.client.query('ROLLBACK').catch(() => { });
     existing.client.release();
     openTransactions.delete(sessionId);
   }
@@ -110,11 +76,9 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
   const results: DemoExecutionResult[] = [];
 
   try {
-    // BEGIN transaction
     const beginStart = Date.now();
     await client.query('BEGIN');
-    // Set app context so RLS policies on inventory (triggered by stock_movements insert) pass.
-    // Uses admin (user_id=1) for the demo since there is no auth system yet.
+
     await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
@@ -122,7 +86,6 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
       executionTimeMs: Date.now() - beginStart,
     });
 
-    // Find a pending PO with items to demonstrate receiving
     const findPoSql = `
       SELECT oi.order_item_id, oi.product_id, oi.ordered_quantity, oi.received_quantity,
              po.order_id, po.warehouse_id, p.name as product_name
@@ -137,7 +100,6 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     results.push(findResult);
 
     if (findResult.error || !(findResult.result as any)?.rows?.length) {
-      // No suitable PO found — rollback and return
       await client.query('ROLLBACK');
       client.release();
       results.push({
@@ -151,7 +113,6 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     const item = (findResult.result as any).rows[0];
     const receiveQty = Math.min(5, item.ordered_quantity - item.received_quantity);
 
-    // UPDATE order_items — increase received_quantity
     const updateSql = `
       UPDATE order_items
       SET received_quantity = received_quantity + $1
@@ -161,7 +122,6 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     const updateResult = await executeDemoSql(client, updateSql, [receiveQty, item.order_item_id]);
     results.push(updateResult);
 
-    // INSERT stock_movement — inbound movement
     const movementSql = `
       INSERT INTO stock_movements (product_id, warehouse_id, change_amount, movement_type, reference_type)
       VALUES ($1, $2, $3, 'inbound', $4)
@@ -175,7 +135,6 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     ]);
     results.push(movementResult);
 
-    // Store the open transaction for later commit/rollback
     openTransactions.set(sessionId, { client, startedAt: Date.now() });
 
     results.push({
@@ -192,16 +151,12 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
 
     return results;
   } catch (error: any) {
-    // On error, rollback and release
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     client.release();
     throw new AppError(500, `Transaction demo failed: ${error.message}`);
   }
 }
 
-/**
- * Commit an open demo transaction.
- */
 export async function commitTransaction(sessionId: string): Promise<DemoExecutionResult> {
   const entry = openTransactions.get(sessionId);
   if (!entry) {
@@ -232,9 +187,6 @@ export async function commitTransaction(sessionId: string): Promise<DemoExecutio
   }
 }
 
-/**
- * Rollback an open demo transaction.
- */
 export async function rollbackTransaction(sessionId: string): Promise<DemoExecutionResult> {
   const entry = openTransactions.get(sessionId);
   if (!entry) {
@@ -265,31 +217,16 @@ export async function rollbackTransaction(sessionId: string): Promise<DemoExecut
   }
 }
 
-// ─── Locking Demo ────────────────────────────────────────────────────────────
-
-/**
- * Demonstrates pessimistic locking (SELECT ... FOR UPDATE) by simulating
- * two concurrent transfers on the same inventory row.
- *
- * Flow:
- * 1. Transfer A acquires lock via move_stock_advanced
- * 2. Transfer B attempts the same row and waits for the lock
- * 3. Measures lock wait time for Transfer B
- *
- * Both transfers are rolled back after the demo to avoid modifying data.
- */
 export async function lockingDemo(params: {
   product_id?: number;
   warehouse_id?: number;
 }): Promise<DemoExecutionResult[]> {
   const results: DemoExecutionResult[] = [];
 
-  // Find a suitable inventory row for the demo
   const clientA = await getClient();
   const clientB = await getClient();
 
   try {
-    // Find an inventory row with sufficient quantity
     const findSql = `
       SELECT i.inventory_id, i.product_id, i.warehouse_id, i.quantity, i.lot_id,
              p.name as product_name, w.name as warehouse_name
@@ -330,10 +267,9 @@ export async function lockingDemo(params: {
       executionTimeMs: 0,
     });
 
-    // Transfer A: BEGIN and acquire lock
     const transferAStart = Date.now();
     await clientA.query('BEGIN');
-    
+
     const lockSql = `
       SELECT * FROM inventory
       WHERE product_id = $1 AND warehouse_id = $2
@@ -352,22 +288,18 @@ export async function lockingDemo(params: {
       executionTimeMs: transferALockTime,
     });
 
-    // Transfer B: BEGIN and attempt to acquire the same lock (will wait)
     await clientB.query('BEGIN');
-    // Set a short lock_timeout so we don't block forever
+
     await clientB.query('SET LOCAL lock_timeout = \'5s\'');
 
     const transferBStart = Date.now();
 
-    // Run Transfer B lock attempt concurrently, then release A's lock
     const transferBPromise = clientB.query(lockSql, [row.product_id, row.warehouse_id])
       .then((res) => ({ success: true, result: res, waitMs: Date.now() - transferBStart }))
       .catch((err) => ({ success: false, error: err.message, waitMs: Date.now() - transferBStart }));
 
-    // Wait a short moment to ensure B is waiting, then release A's lock
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Rollback Transfer A to release the lock
     await clientA.query('ROLLBACK');
     const transferATotalTime = Date.now() - transferAStart;
 
@@ -380,7 +312,6 @@ export async function lockingDemo(params: {
       executionTimeMs: transferATotalTime,
     });
 
-    // Wait for Transfer B to complete
     const transferBResult = await transferBPromise;
 
     if (transferBResult.success) {
@@ -405,10 +336,8 @@ export async function lockingDemo(params: {
       });
     }
 
-    // Rollback Transfer B
     await clientB.query('ROLLBACK');
 
-    // Summary
     results.push({
       sql: '-- Summary: Pessimistic Locking (SELECT ... FOR UPDATE)',
       result: {
@@ -423,9 +352,8 @@ export async function lockingDemo(params: {
 
     return results;
   } catch (error: any) {
-    // Cleanup on error
-    await clientA.query('ROLLBACK').catch(() => {});
-    await clientB.query('ROLLBACK').catch(() => {});
+    await clientA.query('ROLLBACK').catch(() => { });
+    await clientB.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `Locking demo failed: ${error.message}`);
   } finally {
     clientA.release();
@@ -433,28 +361,14 @@ export async function lockingDemo(params: {
   }
 }
 
-
-// ─── Triggers Demo ───────────────────────────────────────────────────────────
-
-/**
- * Demonstrates the trg_check_reorder_after_inventory_change trigger.
- *
- * Flow:
- * 1. Find a product with inventory near reorder_point
- * 2. Insert a stock_movement that causes inventory to reach reorder_point
- * 3. The trigger auto-creates a purchase order
- * 4. Capture the auto-created PO
- * 5. ROLLBACK to avoid modifying real data
- */
 export async function triggersDemo(): Promise<DemoExecutionResult[]> {
   const client = await getClient();
   const results: DemoExecutionResult[] = [];
 
   try {
-    // BEGIN transaction
     const beginStart = Date.now();
     await client.query('BEGIN');
-    // Set app context so RLS policies on inventory (triggered by stock_movements insert) pass.
+
     await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
@@ -462,7 +376,6 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
       executionTimeMs: Date.now() - beginStart,
     });
 
-    // Find a product with inventory above reorder_point (so we can reduce it to trigger)
     const findSql = `
       SELECT i.inventory_id, i.product_id, i.warehouse_id, i.quantity, i.reorder_point,
              i.max_stock_level, i.lot_id,
@@ -493,10 +406,9 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     }
 
     const inv = (findResult.result as any).rows[0];
-    // Calculate the change_amount needed to bring quantity to reorder_point
+
     const changeAmount = -(inv.quantity - inv.reorder_point);
 
-    // Delete any existing pending PO for this product/warehouse to ensure trigger fires
     const deletePendingPoSql = `
       DELETE FROM order_items
       WHERE order_id IN (
@@ -517,11 +429,9 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     `;
     await client.query(deletePendingPoSql2, [inv.warehouse_id]);
 
-    // Record the max order_id before the movement (to detect auto-created PO)
     const maxPoResult = await client.query('SELECT COALESCE(MAX(order_id), 0) as max_id FROM purchase_orders');
     const maxPoIdBefore = maxPoResult.rows[0].max_id;
 
-    // Insert stock_movement that will trigger inventory sync → reorder trigger
     const movementSql = `
       INSERT INTO stock_movements (product_id, warehouse_id, change_amount, movement_type, lot_id, reference_type)
       VALUES ($1, $2, $3, 'adjustment', $4, 'trigger_demo')
@@ -531,7 +441,6 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     const movementResult = await executeDemoSql(client, movementSql, movementParams);
     results.push(movementResult);
 
-    // Check the inventory after the movement (should now be at reorder_point)
     const checkInvSql = `
       SELECT quantity, reorder_point FROM inventory
       WHERE product_id = $1 AND warehouse_id = $2
@@ -540,7 +449,6 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     const checkInvResult = await executeDemoSql(client, checkInvSql, [inv.product_id, inv.warehouse_id, inv.lot_id]);
     results.push(checkInvResult);
 
-    // Check for auto-created purchase order
     const findPoSql = `
       SELECT po.order_id, po.supplier_id, po.warehouse_id, po.status, po.total_amount, po.note,
              s.name as supplier_name,
@@ -558,7 +466,6 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
     const findPoResult = await executeDemoSql(client, findPoSql, [maxPoIdBefore, inv.warehouse_id]);
     results.push(findPoResult);
 
-    // ROLLBACK to preserve data
     const rollbackStart = Date.now();
     await client.query('ROLLBACK');
     results.push({
@@ -567,7 +474,6 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
       executionTimeMs: Date.now() - rollbackStart,
     });
 
-    // Summary
     const autoPoRows = (findPoResult.result as any)?.rows || [];
     results.push({
       sql: '-- Summary: Trigger trg_check_reorder_after_inventory_change',
@@ -595,19 +501,13 @@ export async function triggersDemo(): Promise<DemoExecutionResult[]> {
 
     return results;
   } catch (error: any) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `Triggers demo failed: ${error.message}`);
   } finally {
     client.release();
   }
 }
 
-// ─── Stored Procedures Demo ──────────────────────────────────────────────────
-
-/**
- * Validates and executes a stored procedure/function by name.
- * Supported: suggest_smart_warehouse, move_stock_advanced, calculate_distance
- */
 export async function storedProcedureDemo(
   name: string,
   params: Record<string, any>
@@ -627,7 +527,6 @@ export async function storedProcedureDemo(
 async function executeSuggestSmartWarehouse(params: Record<string, any>): Promise<DemoExecutionResult[]> {
   const results: DemoExecutionResult[] = [];
 
-  // Validate parameters
   const { product_id, required_quantity, latitude, longitude } = params;
 
   if (!product_id || !Number.isInteger(Number(product_id))) {
@@ -643,7 +542,6 @@ async function executeSuggestSmartWarehouse(params: Record<string, any>): Promis
     throw new AppError(400, 'Invalid parameter: longitude must be between -180 and 180');
   }
 
-  // Verify product exists
   const productCheck = await query('SELECT product_id, name FROM products WHERE product_id = $1', [Number(product_id)]);
   if (productCheck.rows.length === 0) {
     throw new AppError(400, `Invalid parameter: product_id ${product_id} does not exist`);
@@ -699,12 +597,11 @@ async function executeMoveStockAdvanced(params: Record<string, any>): Promise<De
     throw new AppError(400, 'Invalid parameter: product_id is required');
   }
 
-  // Execute within a transaction and ROLLBACK to avoid modifying data
   const client = await getClient();
 
   try {
     await client.query('BEGIN');
-    // Set app context so RLS policies on inventory (triggered by move_stock_advanced) pass.
+
     await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: 'BEGIN',
@@ -727,7 +624,6 @@ async function executeMoveStockAdvanced(params: Record<string, any>): Promise<De
       const result = await client.query(sql, sqlParams);
       const executionTimeMs = Date.now() - start;
 
-      // Get updated inventory for both warehouses
       const invSql = `
         SELECT i.product_id, i.warehouse_id, i.quantity, i.lot_id,
                p.name as product_name, w.name as warehouse_name
@@ -757,7 +653,6 @@ async function executeMoveStockAdvanced(params: Record<string, any>): Promise<De
       });
     }
 
-    // ROLLBACK
     await client.query('ROLLBACK');
     results.push({
       sql: 'ROLLBACK',
@@ -767,7 +662,7 @@ async function executeMoveStockAdvanced(params: Record<string, any>): Promise<De
 
     return results;
   } catch (error: any) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `move_stock_advanced demo failed: ${error.message}`);
   } finally {
     client.release();
@@ -820,19 +715,13 @@ async function executeCalculateDistance(params: Record<string, any>): Promise<De
   return results;
 }
 
-// ─── Partial Indexes Demo ────────────────────────────────────────────────────
-
-/**
- * Demonstrates partial index performance by comparing EXPLAIN ANALYZE output
- * with and without the idx_inventory_low_stock index.
- */
 export async function partialIndexesDemo(): Promise<{
   withIndex: DemoExecutionResult;
   withoutIndex: DemoExecutionResult;
   indexMetadata: DemoExecutionResult;
   comparison: {
-    withIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number };
-    withoutIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number };
+    withIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number; };
+    withoutIndex: { scanType: string; executionTimeMs: number; cost: string; rowsScanned: number; };
     speedup: string;
     costRatio: number;
     totalRows: number;
@@ -847,14 +736,13 @@ export async function partialIndexesDemo(): Promise<{
 
   try {
     await client.query('BEGIN');
-    // Set app context so RLS on inventory passes for all queries in this demo
+
     await client.query('SET LOCAL app.current_user_id = 1');
 
     const querySql = `SELECT * FROM inventory WHERE quantity <= reorder_point`;
     const explainSql = `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${querySql}`;
     const RUNS = 20;
 
-    // 1. Run WITH index
     let withIndexTotalMs = 0;
     let withIndexPlan = '';
     for (let i = 0; i < RUNS; i++) {
@@ -865,7 +753,6 @@ export async function partialIndexesDemo(): Promise<{
     }
     const withIndexAvgMs = withIndexTotalMs / RUNS;
 
-    // 2. Force seq scan and run WITHOUT index
     await client.query('SET LOCAL enable_indexscan = off');
     await client.query('SET LOCAL enable_bitmapscan = off');
     let withoutIndexTotalMs = 0;
@@ -880,7 +767,6 @@ export async function partialIndexesDemo(): Promise<{
     await client.query('RESET enable_indexscan');
     await client.query('RESET enable_bitmapscan');
 
-    // 3. Index metadata
     const indexMetaSql = `
       SELECT indexname, tablename, indexdef,
              pg_size_pretty(pg_relation_size(indexname::regclass)) AS index_size
@@ -891,7 +777,6 @@ export async function partialIndexesDemo(): Promise<{
     const indexMetaResult = await client.query(indexMetaSql);
     const indexMetaTime = Date.now() - indexMetaStart;
 
-    // 4. Total rows + index/table size (inside transaction so RLS passes)
     const totalRowsResult = await client.query('SELECT COUNT(*) as total FROM inventory');
     const totalRows = parseInt(totalRowsResult.rows[0].total, 10);
 
@@ -909,7 +794,6 @@ export async function partialIndexesDemo(): Promise<{
 
     await client.query('ROLLBACK');
 
-    // Parse plans
     const withIndexScanType = parseScanType(withIndexPlan);
     const withoutIndexScanType = parseScanType(withoutIndexPlan);
     const withIndexExecTime = parseExecutionTime(withIndexPlan);
@@ -917,7 +801,6 @@ export async function partialIndexesDemo(): Promise<{
     const withIndexCost = parseCost(withIndexPlan);
     const withoutIndexCost = parseCost(withoutIndexPlan);
 
-    // Parse actual rows scanned from EXPLAIN ANALYZE output
     const parseRowsScanned = (plan: string): number => {
       const match = plan.match(/actual time=[\d.]+\.\.[\d.]+ rows=(\d+)/);
       if (match) return parseInt(match[1], 10);
@@ -927,7 +810,6 @@ export async function partialIndexesDemo(): Promise<{
     const withIndexRowsScanned = parseRowsScanned(withIndexPlan);
     const withoutIndexRowsScanned = parseRowsScanned(withoutIndexPlan);
 
-    // Cost ratio — planner cost is the most meaningful metric for small tables
     const withIndexCostNum = parseFloat(withIndexCost.split('..')[1] || '0');
     const withoutIndexCostNum = parseFloat(withoutIndexCost.split('..')[1] || '0');
     let speedup: string;
@@ -976,16 +858,13 @@ export async function partialIndexesDemo(): Promise<{
       },
     };
   } catch (error: any) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `Partial indexes demo failed: ${error.message}`);
   } finally {
     client.release();
   }
 }
 
-/**
- * Parse the scan type from an EXPLAIN ANALYZE output.
- */
 function parseScanType(plan: string): string {
   if (plan.includes('Index Scan') || plan.includes('Index Only Scan')) {
     const match = plan.match(/(Index(?:\sOnly)?\sScan(?:\sBackward)?\susing\s\S+)/);
@@ -1001,34 +880,18 @@ function parseScanType(plan: string): string {
   return 'Unknown';
 }
 
-/**
- * Parse execution time from EXPLAIN ANALYZE output.
- */
 function parseExecutionTime(plan: string): number {
   const match = plan.match(/Execution Time:\s*([\d.]+)\s*ms/);
   return match ? parseFloat(match[1]) : 0;
 }
 
-/**
- * Parse cost from EXPLAIN ANALYZE output.
- */
 function parseCost(plan: string): string {
   const match = plan.match(/cost=([\d.]+)\.\.([\d.]+)/);
   return match ? `${match[1]}..${match[2]}` : 'N/A';
 }
 
-// ─── Materialized Views Demo ─────────────────────────────────────────────────
-
-/**
- * The materialized view name used for demos.
- * This view aggregates inventory summary by warehouse.
- */
 const MV_NAME = 'mv_inventory_summary';
 
-/**
- * SQL to create the materialized view if it doesn't exist.
- * Aggregates inventory data by warehouse for fast reporting.
- */
 const MV_CREATE_SQL = `
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_inventory_summary AS
 SELECT
@@ -1045,12 +908,7 @@ GROUP BY w.warehouse_id, w.name, w.warehouse_type
 WITH DATA
 `;
 
-/**
- * Ensures the materialized view exists, creating it if necessary.
- * Also creates a unique index required for CONCURRENTLY refresh.
- */
 async function ensureMaterializedView(client: PoolClient): Promise<void> {
-  // Check if MV exists
   const checkResult = await client.query(
     `SELECT matviewname FROM pg_matviews WHERE matviewname = $1`,
     [MV_NAME]
@@ -1058,17 +916,13 @@ async function ensureMaterializedView(client: PoolClient): Promise<void> {
 
   if (checkResult.rows.length === 0) {
     await client.query(MV_CREATE_SQL);
-    // Create unique index required for REFRESH CONCURRENTLY
+
     await client.query(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_inventory_summary_wh ON mv_inventory_summary (warehouse_id)`
     );
   }
 }
 
-/**
- * Refreshes the materialized view concurrently.
- * Returns execution time in ms.
- */
 export async function refreshMaterializedView(): Promise<DemoExecutionResult> {
   const client = await getClient();
 
@@ -1082,7 +936,6 @@ export async function refreshMaterializedView(): Promise<DemoExecutionResult> {
       await client.query(sql);
       const executionTimeMs = Date.now() - start;
 
-      // Get last refresh time
       const refreshTimeResult = await client.query(
         `SELECT pg_stat_get_last_analyze_time(c.oid) as last_refresh
          FROM pg_class c WHERE c.relname = $1`,
@@ -1112,10 +965,6 @@ export async function refreshMaterializedView(): Promise<DemoExecutionResult> {
   }
 }
 
-/**
- * Compares EXPLAIN ANALYZE output between querying the MV and the base tables.
- * Returns side-by-side comparison with execution times.
- */
 export async function compareMaterializedView(): Promise<{
   mvQuery: DemoExecutionResult;
   baseQuery: DemoExecutionResult;
@@ -1134,7 +983,6 @@ export async function compareMaterializedView(): Promise<{
 
     const RUNS = 30;
 
-    // Query the materialized view (multiple runs for stable timing)
     const mvSql = `SELECT * FROM ${MV_NAME} ORDER BY warehouse_name`;
     const mvExplainSql = `EXPLAIN (ANALYZE, BUFFERS) ${mvSql}`;
 
@@ -1148,7 +996,6 @@ export async function compareMaterializedView(): Promise<{
     }
     const mvAvgMs = mvTotalMs / RUNS;
 
-    // Equivalent base table query (multiple runs)
     const baseSql = `
 SELECT
   w.warehouse_id,
@@ -1179,7 +1026,6 @@ ORDER BY w.name`;
     const mvCost = parseCost(mvPlan);
     const baseCost = parseCost(basePlan);
 
-    // Compare planner cost (more reliable than wall-clock for small data)
     const mvCostNum = parseFloat(mvCost.split('..')[1] || '0');
     const baseCostNum = parseFloat(baseCost.split('..')[1] || '0');
 
@@ -1236,18 +1082,11 @@ ORDER BY w.name`;
   }
 }
 
-// ─── Audit Demo ──────────────────────────────────────────────────────────────
-
-/**
- * Demonstrates audit logging by performing a sample UPDATE on a product record
- * within a transaction, capturing the resulting audit_log entry, then rolling back.
- */
 export async function auditDemo(): Promise<DemoExecutionResult[]> {
   const client = await getClient();
   const results: DemoExecutionResult[] = [];
 
   try {
-    // BEGIN
     await client.query('BEGIN');
     results.push({
       sql: 'BEGIN',
@@ -1255,7 +1094,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
       executionTimeMs: 0,
     });
 
-    // Set app context for audit trigger
     await client.query("SET LOCAL app.current_user_id = '1'");
     results.push({
       sql: "SET LOCAL app.current_user_id = '1'",
@@ -1263,7 +1101,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
       executionTimeMs: 0,
     });
 
-    // Find a product to update
     const findSql = `SELECT product_id, name, unit_cost, unit_price FROM products WHERE is_active = true LIMIT 1`;
     const findResult = await executeDemoSql(client, findSql);
     results.push(findResult);
@@ -1281,11 +1118,9 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
 
     const product = (findResult.result as any).rows[0];
 
-    // Record max audit log ID before the update
     const maxLogResult = await client.query('SELECT COALESCE(MAX(log_id), 0) as max_id FROM audit_logs');
     const maxLogIdBefore = maxLogResult.rows[0].max_id;
 
-    // Perform UPDATE on the product (change unit_cost slightly)
     const newCost = (parseFloat(product.unit_cost) + 1.5).toFixed(2);
     const updateSql = `
       UPDATE products
@@ -1296,7 +1131,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
     const updateResult = await executeDemoSql(client, updateSql, [newCost, product.product_id]);
     results.push(updateResult);
 
-    // Query the resulting audit_log entry
     const auditSql = `
       SELECT log_id, user_id, action, table_name, record_id,
              old_value, new_value, ip_address, created_at
@@ -1310,7 +1144,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
     const auditResult = await executeDemoSql(client, auditSql, [maxLogIdBefore, product.product_id]);
     results.push(auditResult);
 
-    // Compute JSONB diff if audit entry exists
     const auditRows = (auditResult.result as any)?.rows || [];
     let jsonbDiff: any = null;
     if (auditRows.length > 0) {
@@ -1321,7 +1154,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
       }
     }
 
-    // ROLLBACK
     await client.query('ROLLBACK');
     results.push({
       sql: 'ROLLBACK',
@@ -1329,7 +1161,6 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
       executionTimeMs: 0,
     });
 
-    // Summary
     results.push({
       sql: '-- Summary: Audit Logging with JSONB Diff',
       result: {
@@ -1345,22 +1176,19 @@ export async function auditDemo(): Promise<DemoExecutionResult[]> {
 
     return results;
   } catch (error: any) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `Audit demo failed: ${error.message}`);
   } finally {
     client.release();
   }
 }
 
-/**
- * Compute a diff between two JSONB objects, identifying changed, added, and removed keys.
- */
 function computeJsonbDiff(oldValue: Record<string, any>, newValue: Record<string, any>): {
-  changed: Record<string, { old: any; new: any }>;
+  changed: Record<string, { old: any; new: any; }>;
   added: Record<string, any>;
   removed: Record<string, any>;
 } {
-  const changed: Record<string, { old: any; new: any }> = {};
+  const changed: Record<string, { old: any; new: any; }> = {};
   const added: Record<string, any> = {};
   const removed: Record<string, any> = {};
 
@@ -1382,12 +1210,6 @@ function computeJsonbDiff(oldValue: Record<string, any>, newValue: Record<string
   return { changed, added, removed };
 }
 
-// ─── pgvector Demo ───────────────────────────────────────────────────────────
-
-/**
- * Demonstrates pgvector semantic search with SQL display.
- * Accepts a query text, generates embedding, executes cosine similarity search.
- */
 export async function pgvectorDemo(queryText: string): Promise<DemoExecutionResult[]> {
   const results: DemoExecutionResult[] = [];
 
@@ -1395,7 +1217,6 @@ export async function pgvectorDemo(queryText: string): Promise<DemoExecutionResu
     throw new AppError(400, 'Query text must be at least 2 characters long');
   }
 
-  // Step 1: Generate embedding
   let embedding: number[];
   const embeddingStart = Date.now();
   try {
@@ -1419,7 +1240,6 @@ export async function pgvectorDemo(queryText: string): Promise<DemoExecutionResu
     return results;
   }
 
-  // Step 2: Execute cosine similarity search
   const vectorStr = `[${embedding.join(',')}]`;
   const searchSql = `
 SELECT product_id, name, sku, category,
@@ -1430,7 +1250,6 @@ WHERE embedding IS NOT NULL
 ORDER BY similarity DESC
 LIMIT 20`;
 
-  // Display SQL with the vector operator visible
   const displaySql = `SELECT product_id, name, sku, category,\n       1 - (embedding <=> '[...]'::vector) AS similarity\nFROM products\nWHERE embedding IS NOT NULL\n  AND 1 - (embedding <=> '[...]'::vector) >= 0.3\nORDER BY similarity DESC\nLIMIT 20`;
 
   const searchStart = Date.now();
@@ -1468,12 +1287,6 @@ LIMIT 20`;
   return results;
 }
 
-// ─── RLS Demo ────────────────────────────────────────────────────────────────
-
-/**
- * Demonstrates Row Level Security by setting session variables for different roles
- * and querying inventory to show how RLS policies restrict access.
- */
 export async function rlsDemo(): Promise<{
   explanation: string;
   policies: DemoExecutionResult;
@@ -1489,7 +1302,6 @@ export async function rlsDemo(): Promise<{
   const client = await getClient();
 
   try {
-    // Get RLS policy definitions
     const policySql = `
       SELECT polname AS policy_name,
              CASE polcmd
@@ -1509,7 +1321,6 @@ export async function rlsDemo(): Promise<{
     const policyResult = await client.query(policySql);
     const policyTime = Date.now() - policyStart;
 
-    // Get users for different roles
     const usersResult = await client.query(`
       SELECT user_id, username, full_name, role, assigned_warehouse_id
       FROM users
@@ -1523,7 +1334,6 @@ export async function rlsDemo(): Promise<{
       LIMIT 3
     `);
 
-    // Build role demos - query inventory with different user contexts
     const roleResults: Array<{
       role: string;
       userId: number;
@@ -1533,14 +1343,12 @@ export async function rlsDemo(): Promise<{
       executionTimeMs: number;
     }> = [];
 
-    // Define demo roles - use actual users if available, otherwise simulate
     const demoRoles = [
       { role: 'staff', userId: 0 },
       { role: 'warehouse_manager', userId: 0 },
       { role: 'admin', userId: 0 },
     ];
 
-    // Map actual users to roles
     for (const user of usersResult.rows) {
       const roleEntry = demoRoles.find((r) => r.role === user.role);
       if (roleEntry && roleEntry.userId === 0) {
@@ -1548,12 +1356,10 @@ export async function rlsDemo(): Promise<{
       }
     }
 
-    // If no users found for some roles, use fallback IDs
-    if (demoRoles[0].userId === 0) demoRoles[0].userId = 3; // staff
-    if (demoRoles[1].userId === 0) demoRoles[1].userId = 2; // manager
-    if (demoRoles[2].userId === 0) demoRoles[2].userId = 1; // admin
+    if (demoRoles[0].userId === 0) demoRoles[0].userId = 3;
+    if (demoRoles[1].userId === 0) demoRoles[1].userId = 2;
+    if (demoRoles[2].userId === 0) demoRoles[2].userId = 1;
 
-    // Sample query — used for sampleRows (LIMIT 5)
     const inventorySql = `
       SELECT i.inventory_id, i.product_id, i.warehouse_id, i.quantity,
              p.name AS product_name, w.name AS warehouse_name
@@ -1564,9 +1370,6 @@ export async function rlsDemo(): Promise<{
       LIMIT 5
     `;
 
-    // Count query — must use the same JOIN structure so RLS USING clause is evaluated.
-    // A bare COUNT(*) FROM inventory without joins can be optimized away by the planner,
-    // bypassing RLS. Joining products and warehouses forces a sequential scan with policy checks.
     const countSql = `
       SELECT COUNT(*) AS total
       FROM inventory i
@@ -1577,13 +1380,11 @@ export async function rlsDemo(): Promise<{
     for (const demoRole of demoRoles) {
       await client.query('BEGIN');
 
-      // SET LOCAL scopes the variable to this transaction only — safe with connection pooling.
       const setContextSql = `SET LOCAL app.current_user_id = '${demoRole.userId}'`;
       await client.query(setContextSql);
 
       const roleStart = Date.now();
       try {
-        // Run both queries inside the same transaction so SET LOCAL applies to both
         const [roleResult, countResult] = await Promise.all([
           client.query(inventorySql),
           client.query(countSql),
@@ -1631,12 +1432,6 @@ export async function rlsDemo(): Promise<{
   }
 }
 
-// ─── Partitioning Demo ───────────────────────────────────────────────────────
-
-/**
- * Demonstrates table partitioning by executing EXPLAIN ANALYZE on a date-filtered
- * query on stock_movements, showing partition pruning in the execution plan.
- */
 export async function partitioningDemo(): Promise<{
   explanation: string;
   partitions: DemoExecutionResult;
@@ -1650,7 +1445,6 @@ export async function partitioningDemo(): Promise<{
   const client = await getClient();
 
   try {
-    // Get partition info
     const partitionSql = `
       SELECT
         child.relname AS partition_name,
@@ -1666,8 +1460,6 @@ export async function partitioningDemo(): Promise<{
     const partitionResult = await client.query(partitionSql);
     const partitionTime = Date.now() - partitionStart;
 
-    // Execute EXPLAIN ANALYZE with a date filter that should trigger partition pruning
-    // Query only 2025 data — should prune 2024, 2026, and default partitions
     const querySql = `
 SELECT sm.movement_id, sm.product_id, sm.warehouse_id, sm.change_amount,
        sm.movement_type, sm.created_at
@@ -1682,7 +1474,6 @@ LIMIT 20`;
     const explainTime = Date.now() - explainStart;
     const plan = explainResult.rows.map((r: any) => r['QUERY PLAN']).join('\n');
 
-    // Parse which partitions were scanned vs pruned
     const allPartitions = partitionResult.rows.map((r: any) => r.partition_name);
     const scannedPartitions: string[] = [];
     const prunedPartitions: string[] = [];
@@ -1729,12 +1520,6 @@ LIMIT 20`;
   }
 }
 
-// ─── Reset Demo Data ─────────────────────────────────────────────────────────
-
-/**
- * Resets demo-specific data by cleaning up records created during demos
- * and re-seeding with initial demo data.
- */
 export async function resetDemoData(): Promise<DemoExecutionResult> {
   const client = await getClient();
   const start = Date.now();
@@ -1742,14 +1527,12 @@ export async function resetDemoData(): Promise<DemoExecutionResult> {
   try {
     await client.query('BEGIN');
 
-    // Clean up demo-specific stock movements (those with reference_type containing 'demo')
     await client.query(`
       DELETE FROM stock_movements
       WHERE reference_type LIKE '%demo%'
         OR reference_type LIKE '%trigger_demo%'
     `);
 
-    // Clean up any demo purchase orders (those with note containing 'demo')
     await client.query(`
       DELETE FROM order_items
       WHERE order_id IN (
@@ -1760,7 +1543,6 @@ export async function resetDemoData(): Promise<DemoExecutionResult> {
       DELETE FROM purchase_orders WHERE note LIKE '%demo%'
     `);
 
-    // Refresh the materialized view if it exists
     const mvExists = await client.query(
       `SELECT 1 FROM pg_matviews WHERE matviewname = $1`,
       [MV_NAME]
@@ -1785,7 +1567,7 @@ export async function resetDemoData(): Promise<DemoExecutionResult> {
       executionTimeMs,
     };
   } catch (error: any) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     const executionTimeMs = Date.now() - start;
     return {
       sql: '-- Reset Demo Data (FAILED)',

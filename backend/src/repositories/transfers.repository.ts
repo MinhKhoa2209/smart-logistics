@@ -1,10 +1,6 @@
 import { PoolClient } from 'pg';
 import { query } from '../config/database';
 
-/**
- * Transfer Orders repository — handles all database queries for the transfers domain.
- */
-
 export interface TransferOrderRow {
   transfer_id: number;
   from_warehouse_id: number;
@@ -41,10 +37,7 @@ interface FindAllOptions {
   to_warehouse_id?: number;
 }
 
-/**
- * Find all transfer orders with pagination and optional filters.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: TransferOrderRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: TransferOrderRow[]; total: number; }> {
   const { page, pageSize, status, from_warehouse_id, to_warehouse_id } = options;
   const offset = (page - 1) * pageSize;
 
@@ -72,14 +65,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Transfer
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM transfer_orders t ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with warehouse and user joins
   const dataSql = `
-    SELECT 
+    SELECT
       t.transfer_id,
       t.from_warehouse_id,
       fw.name as from_warehouse_name,
@@ -106,12 +97,9 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Transfer
   return { rows: dataResult.rows, total };
 }
 
-/**
- * Find a transfer order by ID with its items.
- */
 export async function findById(transferId: number): Promise<TransferOrderDetailRow | null> {
   const orderSql = `
-    SELECT 
+    SELECT
       t.transfer_id,
       t.from_warehouse_id,
       fw.name as from_warehouse_name,
@@ -136,9 +124,8 @@ export async function findById(transferId: number): Promise<TransferOrderDetailR
     return null;
   }
 
-  // Get transfer items
   const itemsSql = `
-    SELECT 
+    SELECT
       ti.transfer_item_id,
       ti.transfer_id,
       ti.product_id,
@@ -159,10 +146,6 @@ export async function findById(transferId: number): Promise<TransferOrderDetailR
   };
 }
 
-/**
- * Execute the move_stock_advanced stored function within a transaction.
- * This function uses SELECT ... FOR UPDATE to lock the source inventory row.
- */
 export async function executeMoveStock(
   client: PoolClient,
   data: {
@@ -187,9 +170,6 @@ export async function executeMoveStock(
   ]);
 }
 
-/**
- * Create a transfer order record within a transaction.
- */
 export async function createTransferOrder(
   client: PoolClient,
   data: {
@@ -205,7 +185,7 @@ export async function createTransferOrder(
     VALUES ($1, $2, $3, $4, $5)
     RETURNING transfer_id
   `;
-  const result = await client.query<{ transfer_id: number }>(sql, [
+  const result = await client.query<{ transfer_id: number; }>(sql, [
     data.from_warehouse_id,
     data.to_warehouse_id,
     data.status,
@@ -215,9 +195,6 @@ export async function createTransferOrder(
   return result.rows[0].transfer_id;
 }
 
-/**
- * Create a transfer item record within a transaction.
- */
 export async function createTransferItem(
   client: PoolClient,
   data: {
@@ -233,10 +210,6 @@ export async function createTransferItem(
   await client.query(sql, [data.transfer_id, data.product_id, data.quantity]);
 }
 
-/**
- * Get available inventory quantity for a product in a specific warehouse.
- * Used for validation before transfer execution.
- */
 export async function getAvailableQuantity(
   client: PoolClient,
   warehouseId: number,
@@ -262,6 +235,6 @@ export async function getAvailableQuantity(
     params = [warehouseId, productId];
   }
 
-  const result = await client.query<{ available: string }>(sql, params);
+  const result = await client.query<{ available: string; }>(sql, params);
   return parseInt(result.rows[0].available, 10);
 }

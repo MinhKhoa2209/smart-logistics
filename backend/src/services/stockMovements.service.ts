@@ -2,10 +2,6 @@ import * as stockMovementsRepository from '../repositories/stockMovements.reposi
 import { parsePaginationParams, formatPaginatedResponse, PaginatedResponse } from '../utils/pagination';
 import { StockMovementRow } from '../repositories/stockMovements.repository';
 
-/**
- * Stock Movements service — business logic coordination for stock movements.
- */
-
 interface ListStockMovementsOptions {
   page?: string;
   pageSize?: string;
@@ -14,11 +10,6 @@ interface ListStockMovementsOptions {
   movement_type?: string;
 }
 
-/**
- * Get paginated list of stock movement records with optional filters.
- * Default page size is 20 records per page.
- * Supports date range filter (enables partition pruning) and movement_type filter.
- */
 export async function listStockMovements(
   options: ListStockMovementsOptions
 ): Promise<PaginatedResponse<StockMovementRow>> {

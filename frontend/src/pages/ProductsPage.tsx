@@ -91,7 +91,7 @@ export default function ProductsPage() {
               ))}
             </div>
           )}
-          {semanticResults.length === 0 && semanticQuery.length >= 2 && !semanticLoading && <p className="text-sm text-muted-foreground mt-2">No matching products</p>}
+          {semanticResults.length === 0 && semanticQuery.length >= 2 && !semanticLoading && <p className="text-sm text-muted-foreground mt-2">No products found with similarity above 50%</p>}
         </CardContent>
       </Card>
 

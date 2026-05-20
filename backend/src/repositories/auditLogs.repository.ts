@@ -1,11 +1,5 @@
 import { query } from '../config/database';
 
-/**
- * Audit Logs repository — handles all database queries for the audit logs domain.
- * The audit_logs table is append-only (no UPDATE or DELETE allowed).
- * Supports multi-filter queries with pagination (20 records per page default).
- */
-
 export interface AuditLogRow {
   log_id: string;
   user_id: number | null;
@@ -29,12 +23,7 @@ interface FindAllOptions {
   end_date?: string;
 }
 
-/**
- * Find all audit log records with pagination and multi-filter support.
- * Filters: table_name, user_id, action, date range (start_date, end_date).
- * Default sort: created_at DESC.
- */
-export async function findAll(options: FindAllOptions): Promise<{ rows: AuditLogRow[]; total: number }> {
+export async function findAll(options: FindAllOptions): Promise<{ rows: AuditLogRow[]; total: number; }> {
   const { page, pageSize, table_name, user_id, action, start_date, end_date } = options;
   const offset = (page - 1) * pageSize;
 
@@ -42,28 +31,24 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: AuditLog
   const params: any[] = [];
   let paramIndex = 1;
 
-  // Table name filter
   if (table_name) {
     conditions.push(`al.table_name = $${paramIndex}`);
     params.push(table_name);
     paramIndex++;
   }
 
-  // User ID filter
   if (user_id) {
     conditions.push(`al.user_id = $${paramIndex}`);
     params.push(parseInt(user_id, 10));
     paramIndex++;
   }
 
-  // Action filter
   if (action) {
     conditions.push(`al.action = $${paramIndex}`);
     params.push(action);
     paramIndex++;
   }
 
-  // Date range filter
   if (start_date) {
     conditions.push(`al.created_at >= $${paramIndex}`);
     params.push(start_date);
@@ -78,14 +63,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: AuditLog
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Count query
   const countSql = `SELECT COUNT(*) as total FROM audit_logs al ${whereClause}`;
-  const countResult = await query<{ total: string }>(countSql, params);
+  const countResult = await query<{ total: string; }>(countSql, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
-  // Data query with user join for user name
   const dataSql = `
-    SELECT 
+    SELECT
       al.log_id,
       al.user_id,
       u.full_name as user_name,

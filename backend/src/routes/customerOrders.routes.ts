@@ -10,10 +10,6 @@ import * as customerOrdersService from '../services/customerOrders.service';
 
 const router = Router();
 
-/**
- * GET /api/customer-orders
- * Paginated list of customer orders with optional status and payment_status filters.
- */
 router.get(
   '/',
   validate({ query: customerOrderFilterSchema }),
@@ -32,10 +28,6 @@ router.get(
   }
 );
 
-/**
- * PATCH /api/customer-orders/:id/status
- * Update customer order status (validates inventory for 'processing', creates shipment for 'shipped').
- */
 router.patch(
   '/:id/status',
   validate({ params: customerOrderIdParamSchema, body: updateCustomerOrderStatusSchema }),
@@ -50,10 +42,6 @@ router.patch(
   }
 );
 
-/**
- * POST /api/customer-orders/:id/payments
- * Record a payment for a customer order.
- */
 router.post(
   '/:id/payments',
   validate({ params: customerOrderIdParamSchema, body: createPaymentSchema }),

@@ -1,13 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Zod schemas for Audit Logs module request validation.
- */
-
-// Valid audit actions matching the database constraint
 const auditActions = ['INSERT', 'UPDATE', 'DELETE'] as const;
 
-// Schema for audit logs list query filters
 export const auditLogsFilterSchema = z.object({
   page: z.string().optional(),
   pageSize: z.string().optional(),

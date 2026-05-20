@@ -18,23 +18,18 @@ import pgFeaturesRoutes from './routes/pgFeatures.routes';
 
 const app = express();
 
-// Security middleware
 app.use(helmet());
 
-// CORS configuration
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
 }));
 
-// Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Set app context (user_id) for audit triggers
 app.use(appContext());
 
-// Health check endpoint
 app.get('/api/health', async (_req, res) => {
   const dbHealthy = await healthCheck();
   const status = dbHealthy ? 'ok' : 'degraded';
@@ -47,7 +42,6 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-// API routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/warehouses', warehousesRoutes);
@@ -61,7 +55,6 @@ app.use('/api/lots', productLotsRoutes);
 app.use('/api/audit-logs', auditLogsRoutes);
 app.use('/api/pg-features', pgFeaturesRoutes);
 
-// Global error handler (must be registered after all routes)
 app.use(errorHandler);
 
 export default app;

@@ -5,12 +5,6 @@ import * as auditLogsService from '../services/auditLogs.service';
 
 const router = Router();
 
-/**
- * GET /api/audit-logs
- * Paginated audit logs list (20/page) with multi-filter support.
- * Filters: table_name, user_id, action, date range (start_date, end_date).
- * Returns audit log entries with computed JSONB diff (additions, deletions, changes).
- */
 router.get(
   '/',
   validate({ query: auditLogsFilterSchema }),
