@@ -361,19 +361,66 @@ Because if there's a bug in the code, or someone accesses the database directly 
 **How it works:**
 
 ```
-Each request from user → Backend sets variable:
-  SET LOCAL app.current_user_id = '5'  (staff, assigned to HCM warehouse)
+Each request from user → Backend sets variable (inside a transaction):
+  BEGIN;
+  SET LOCAL app.current_user_id = '5';  (staff, assigned to HCM warehouse)
 
 When querying: SELECT * FROM inventory
-  → PostgreSQL automatically adds a hidden condition:
-    WHERE warehouse_id = 1  (HCM warehouse — assigned to user 5)
+  → PostgreSQL calls get_current_app_user() per row:
+      reads app.current_user_id from session → looks up users table
+  → Automatically applies the matching policy:
+      staff:             WHERE warehouse_id = assigned_warehouse_id
+      warehouse_manager: WHERE warehouse_id IN (managed warehouses)
+      admin:             no restriction
 
-Result: staff sees only 23 rows (HCM warehouse)
-        manager sees 30 rows (their managed warehouses)
-        admin sees 58 rows (everything)
+Result: staff (userId=5)           → 26 rows  (assigned warehouse only)
+        warehouse_manager (userId=2) → 37 rows  (managed warehouses)
+        admin (userId=1)             → 58 rows  (everything)
 ```
 
-**Demo:** PG Features page → RLS tab → click "Compare Role Visibility" → see 3 roles with different row counts.
+**Critical implementation detail — why `postgres` superuser bypasses RLS:**
+
+PostgreSQL superusers have `BYPASSRLS = true` by default. If the backend connects as `postgres`, **all RLS policies are silently ignored** regardless of `SET LOCAL app.current_user_id`. The fix is to connect as a dedicated non-superuser role:
+
+```sql
+-- Create a dedicated application role with no BYPASSRLS
+CREATE ROLE app_user WITH LOGIN PASSWORD '...'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+
+-- Grant only the permissions the app needs
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO app_user;
+```
+
+```yaml
+# docker-compose.yml — backend connects as app_user, not postgres
+DATABASE_URL: postgresql://app_user:app_password@db:5432/smart_logistics
+```
+
+**Why `SET LOCAL` instead of `SET SESSION`:**
+
+`SET LOCAL` scopes the variable to the current transaction only. With a connection pool, connections are reused across requests. Using `SET SESSION` would leak `user_id` from one request to the next. The backend wraps every RLS-protected query in a transaction:
+
+```typescript
+// queryWithContext() in appContext.ts
+await client.query('BEGIN');
+await client.query('SET LOCAL app.current_user_id = $1', [userId]);
+const result = await client.query(sql, params);   // RLS sees correct user
+await client.query('COMMIT');
+// Connection returns to pool — SET LOCAL is gone, no leak
+```
+
+**Active policies on `inventory` table:**
+
+| Command | Policy | Rule |
+|---|---|---|
+| SELECT | `inventory_select_policy` | admin: all rows; manager: managed warehouses; staff: assigned warehouse |
+| INSERT | `inventory_insert_policy` | Same as SELECT |
+| UPDATE | `inventory_update_policy` | Same as SELECT (both USING and WITH CHECK) |
+| DELETE | `inventory_delete_policy` | admin only |
+
+**Demo:** PG Features page → RLS tab → click "Compare Role Visibility" → see staff=26, manager=37, admin=58 rows.
 
 ---
 

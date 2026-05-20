@@ -27,7 +27,8 @@ services:
     container_name: smartlogistic-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smart_logistics}
+      # Use app_user (no BYPASSRLS) so RLS policies are enforced at the DB level
+      DATABASE_URL: postgresql://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_password}@db:5432/${POSTGRES_DB:-smart_logistics}
       PORT: 3000
       CORS_ORIGIN: http://localhost:5173
       OLLAMA_URL: http://ollama:11434

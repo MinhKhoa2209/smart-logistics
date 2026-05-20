@@ -19,6 +19,7 @@ router.get(
         pageSize: req.query.pageSize as string | undefined,
         warehouse_id: req.query.warehouse_id as string | undefined,
         low_stock: req.query.low_stock as string | undefined,
+        userId: (req as any).userId,
       });
       res.json(result);
     } catch (error) {

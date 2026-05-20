@@ -2,9 +2,6 @@ import { query } from '../config/database';
 import { generateEmbedding } from '../utils/embedding';
 import { AppError } from '../middleware';
 
-/**
- * Semantic search result from pgvector cosine similarity query.
- */
 export interface SemanticSearchResult {
   product_id: number;
   name: string;
@@ -13,9 +10,6 @@ export interface SemanticSearchResult {
   similarity: number;
 }
 
-/**
- * Response from the semantic search service.
- */
 export interface SemanticSearchResponse {
   results: SemanticSearchResult[];
   sql: string;
@@ -25,45 +19,58 @@ export interface SemanticSearchResponse {
 /**
  * Perform semantic search on products using pgvector cosine similarity.
  *
- * 1. Converts the query text into a vector embedding via Ollama (local, no API key needed).
- * 2. Executes a cosine distance query against the products table using the <=> operator.
- * 3. Returns top 20 results ordered by similarity DESC.
+ * Uses nomic-embed-text with "search_query:" prefix for the user query,
+ * matching against products indexed with "search_document:" prefix.
+ * This asymmetric approach (query vs document prefixes) significantly
+ * improves retrieval accuracy for nomic-embed-text.
  *
- * @param queryText - The natural language search query (2-200 characters)
+ * The <=> operator computes cosine distance (0 = identical, 2 = opposite).
+ * Similarity = 1 - cosine_distance (higher = more similar).
+ *
+ * @param queryText - Natural language search query (2-200 chars)
  */
 export async function semanticSearch(queryText: string): Promise<SemanticSearchResponse> {
-  // Generate embedding from query text
   let embedding: number[];
   try {
+    // generateEmbedding automatically adds "search_query:" prefix
     embedding = await generateEmbedding(queryText);
   } catch (error: any) {
     throw new AppError(503, `Semantic search unavailable: ${error.message}`);
   }
 
-  // Format the embedding as a PostgreSQL vector string
   const vectorStr = `[${embedding.join(',')}]`;
 
-  // Build the SQL query using cosine distance operator
-  const sql = `SELECT product_id, name, sku, category, 1 - (embedding <=> $1::vector) as similarity FROM products WHERE embedding IS NOT NULL ORDER BY embedding <=> $1::vector ASC LIMIT 20`;
+  // Display SQL (with truncated vector for readability)
+  const displaySql = `SELECT product_id, name, sku, category,
+       1 - (embedding <=> '[...]'::vector) AS similarity
+FROM products
+WHERE embedding IS NOT NULL
+ORDER BY embedding <=> '[...]'::vector ASC
+LIMIT 20`;
 
-  // Execute the query
-  const { rows } = await query<SemanticSearchResult>(sql, [vectorStr]);
+  // Actual query
+  const execSql = `
+    SELECT product_id, name, sku, category,
+           1 - (embedding <=> $1::vector) AS similarity
+    FROM products
+    WHERE embedding IS NOT NULL
+    ORDER BY embedding <=> $1::vector ASC
+    LIMIT 20
+  `;
 
-  // Build response
-  const response: SemanticSearchResponse = {
-    results: rows.map((row) => ({
-      product_id: row.product_id,
-      name: row.name,
-      sku: row.sku,
-      category: row.category,
-      similarity: parseFloat(Number(row.similarity).toFixed(4)),
-    })),
-    sql,
+  const { rows } = await query<SemanticSearchResult>(execSql, [vectorStr]);
+
+  const results = rows.map((row) => ({
+    product_id: row.product_id,
+    name: row.name,
+    sku: row.sku,
+    category: row.category,
+    similarity: parseFloat(Number(row.similarity).toFixed(4)),
+  }));
+
+  return {
+    results,
+    sql: displaySql,
+    message: results.length === 0 ? 'No matching products found.' : undefined,
   };
-
-  if (rows.length === 0) {
-    response.message = 'No matching products found for the given query.';
-  }
-
-  return response;
 }

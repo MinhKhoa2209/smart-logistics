@@ -11,11 +11,16 @@ interface ListInventoryOptions {
   pageSize?: string;
   warehouse_id?: string;
   low_stock?: string;
+  /** The user_id from the request context, used for RLS evaluation. */
+  userId?: number;
 }
 
 /**
  * Get paginated list of inventory records with optional filters.
  * Default page size is 50 records per page.
+ *
+ * Passes userId down to the repository so RLS policies restrict rows
+ * to what the current user is allowed to see.
  */
 export async function listInventory(options: ListInventoryOptions): Promise<PaginatedResponse<InventoryRow>> {
   const { page, pageSize } = parsePaginationParams(
@@ -28,6 +33,7 @@ export async function listInventory(options: ListInventoryOptions): Promise<Pagi
     pageSize,
     warehouse_id: options.warehouse_id ? parseInt(options.warehouse_id, 10) : undefined,
     low_stock: options.low_stock === 'true',
+    userId: options.userId ?? 1,
   });
 
   return formatPaginatedResponse(rows, total, page, pageSize);
