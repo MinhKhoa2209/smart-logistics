@@ -13,6 +13,7 @@ export interface InventoryRow {
   reorder_point: number;
   max_stock_level: number | null;
   is_low_stock: boolean;
+  status: 'low_stock' | 'in_stock' | 'overstock';
 }
 
 interface FindAllOptions {
@@ -20,12 +21,13 @@ interface FindAllOptions {
   pageSize: number;
   warehouse_id?: number;
   low_stock?: boolean;
+  status?: 'low_stock' | 'in_stock' | 'overstock';
 
   userId?: number;
 }
 
 export async function findAll(options: FindAllOptions): Promise<{ rows: InventoryRow[]; total: number; }> {
-  const { page, pageSize, warehouse_id, low_stock, userId = 1 } = options;
+  const { page, pageSize, warehouse_id, low_stock, status, userId = 1 } = options;
   const offset = (page - 1) * pageSize;
 
   const conditions: string[] = [];
@@ -38,8 +40,16 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Inventor
     paramIndex++;
   }
 
-  if (low_stock) {
+  const statusFilter = low_stock ? 'low_stock' : status;
+
+  if (statusFilter === 'low_stock') {
     conditions.push(`i.quantity <= i.reorder_point`);
+  } else if (statusFilter === 'in_stock') {
+    conditions.push(`i.quantity > i.reorder_point`);
+    conditions.push(`(i.max_stock_level IS NULL OR i.quantity <= i.max_stock_level)`);
+  } else if (statusFilter === 'overstock') {
+    conditions.push(`i.max_stock_level IS NOT NULL`);
+    conditions.push(`i.quantity > i.max_stock_level`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -61,7 +71,12 @@ export async function findAll(options: FindAllOptions): Promise<{ rows: Inventor
       i.quantity,
       i.reorder_point,
       i.max_stock_level,
-      (i.quantity <= i.reorder_point) as is_low_stock
+      (i.quantity <= i.reorder_point) as is_low_stock,
+      CASE
+        WHEN i.quantity <= i.reorder_point THEN 'low_stock'
+        WHEN i.max_stock_level IS NOT NULL AND i.quantity > i.max_stock_level THEN 'overstock'
+        ELSE 'in_stock'
+      END as status
     FROM inventory i
     JOIN warehouses w ON i.warehouse_id = w.warehouse_id
     JOIN products p ON i.product_id = p.product_id

@@ -7,6 +7,7 @@ interface ListInventoryOptions {
   pageSize?: string;
   warehouse_id?: string;
   low_stock?: string;
+  status?: 'low_stock' | 'in_stock' | 'overstock';
 
   userId?: number;
 }
@@ -22,6 +23,7 @@ export async function listInventory(options: ListInventoryOptions): Promise<Pagi
     pageSize,
     warehouse_id: options.warehouse_id ? parseInt(options.warehouse_id, 10) : undefined,
     low_stock: options.low_stock === 'true',
+    status: options.status,
     userId: options.userId ?? 1,
   });
 

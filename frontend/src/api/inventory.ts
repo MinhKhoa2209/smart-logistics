@@ -10,7 +10,9 @@ export interface InventoryItem {
   lot_number: string | null;
   quantity: number;
   reorder_point: number;
-  max_stock_level: number;
+  max_stock_level: number | null;
+  is_low_stock: boolean;
+  status: 'low_stock' | 'in_stock' | 'overstock';
 }
 
 export interface InventoryListResponse {
@@ -23,6 +25,7 @@ export async function getInventory(params: {
   pageSize?: number;
   warehouse_id?: number;
   low_stock?: boolean;
+  status?: 'low_stock' | 'in_stock' | 'overstock';
 }): Promise<InventoryListResponse> {
   const { data } = await apiClient.get('/inventory', { params });
   return {
