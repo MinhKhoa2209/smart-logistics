@@ -23,6 +23,36 @@ export default function ProductsPage() {
 
   useEffect(() => { loadProducts(); }, [pagination.page, search, category]);
 
+  useEffect(() => {
+    const query = semanticQuery.trim();
+    if (query.length < 2) {
+      setSemanticResults([]);
+      setSemanticLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSemanticLoading(true);
+    const timeout = window.setTimeout(async () => {
+      try {
+        const results = await productsApi.semanticSearch(query);
+        if (!cancelled) {
+          setSemanticResults(results);
+          setError('');
+        }
+      } catch (e: any) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setSemanticLoading(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [semanticQuery]);
+
   async function loadProducts() {
     setLoading(true);
     try {
@@ -35,9 +65,10 @@ export default function ProductsPage() {
   }
 
   async function handleSemanticSearch() {
-    if (semanticQuery.length < 2) return;
+    const query = semanticQuery.trim();
+    if (query.length < 2) return;
     setSemanticLoading(true);
-    try { setSemanticResults(await productsApi.semanticSearch(semanticQuery)); }
+    try { setSemanticResults(await productsApi.semanticSearch(query)); setError(''); }
     catch (e: any) { setError(e.message); }
     setSemanticLoading(false);
   }
@@ -81,6 +112,7 @@ export default function ProductsPage() {
             <Input placeholder="Describe what you're looking for..." value={semanticQuery} onChange={(e) => setSemanticQuery(e.target.value)} />
             <Button onClick={handleSemanticSearch} disabled={semanticQuery.length < 2 || semanticLoading}>Search</Button>
           </div>
+          {semanticLoading && <p className="text-sm text-muted-foreground mt-2">Searching...</p>}
           {semanticResults.length > 0 && (
             <div className="mt-3 space-y-1">
               {semanticResults.map((r) => (
