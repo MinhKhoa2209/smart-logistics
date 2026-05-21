@@ -34,8 +34,8 @@ BEGIN
   FROM app_role_config c;
 
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), role_name);
-  EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', role_name);
-  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', role_name);
+  EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', role_name);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON ALL TABLES IN SCHEMA public TO %I', role_name);
   EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', role_name);
   EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO %I', role_name);
 END
