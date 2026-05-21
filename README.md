@@ -102,11 +102,6 @@ docker exec smartlogistic-backend node /app/setup-ollama.js
 
 > Note: This step requires the Ollama container to be running and healthy.
 > The model download (~274MB) happens automatically on first run.
->
-> If Docker prints `Found orphan containers ([smartlogistic-ollama])`, it is only
-> warning that Ollama was started from a separate compose file. Remove it with
-> `docker-compose down --remove-orphans` only when you no longer need that
-> container.
 
 ### 6. Open the app
 

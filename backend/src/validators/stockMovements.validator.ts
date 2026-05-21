@@ -24,4 +24,28 @@ export const stockMovementsFilterSchema = z.object({
   movement_type: z.enum(movementTypes).optional(),
 });
 
+export const stockMovementIdParamSchema = z.object({
+  id: z.string().regex(/^\d+$/, 'Movement ID must be a number'),
+});
+
+export const createStockMovementSchema = z.object({
+  product_id: z.number().int().positive('Product is required'),
+  warehouse_id: z.number().int().positive('Warehouse is required'),
+  change_amount: z.number().int().refine((value) => value !== 0, 'Change amount cannot be zero'),
+  movement_type: z.enum(movementTypes),
+  lot_id: z.number().int().positive().nullable().optional(),
+  unit_cost: z.number().min(0).nullable().optional(),
+  reference_id: z.number().int().positive().nullable().optional(),
+  reference_type: z.string().max(30).nullable().optional(),
+  note: z.string().max(1000).nullable().optional(),
+  created_by: z.number().int().positive().nullable().optional(),
+});
+
+export const updateStockMovementSchema = createStockMovementSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  'At least one field is required'
+);
+
 export type StockMovementsFilterInput = z.infer<typeof stockMovementsFilterSchema>;
+export type CreateStockMovementInput = z.infer<typeof createStockMovementSchema>;
+export type UpdateStockMovementInput = z.infer<typeof updateStockMovementSchema>;

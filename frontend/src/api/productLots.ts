@@ -2,6 +2,7 @@ import apiClient from './client';
 
 export interface ProductLot {
   lot_id: number;
+  product_id: number;
   lot_number: string;
   product_name: string;
   sku: string;

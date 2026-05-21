@@ -60,6 +60,22 @@ services:
       db-init:
         condition: service_completed_successfully
 
+  # Ollama - local AI embedding model, used by semantic search
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smartlogistic-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   # Frontend
   frontend:
     build:

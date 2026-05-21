@@ -88,7 +88,7 @@ Write-Host "  Triggers updated." -ForegroundColor Green
 
 # ─── Step 7: Setup Ollama embeddings (optional) ───────────────
 Write-Host "[7/7] Setting up Ollama embeddings for semantic search..." -ForegroundColor Yellow
-Write-Host "  (This requires the Ollama container — run docker-compose.ollama.yml separately)" -ForegroundColor Gray
+Write-Host "  (Ollama is managed by docker-compose.yml)" -ForegroundColor Gray
 
 # Check if Ollama is reachable from backend
 $ollamaReachable = docker exec smartlogistic-backend node -e "fetch('http://ollama:11434/api/tags').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>$null
@@ -98,8 +98,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  Embeddings generated!" -ForegroundColor Green
 } else {
     Write-Host "  Ollama not running — skipping embeddings." -ForegroundColor Yellow
-    Write-Host "  Semantic search will not work until you run:" -ForegroundColor Yellow
-    Write-Host "    docker-compose -f docker-compose.ollama.yml up -d" -ForegroundColor Gray
+    Write-Host "  Semantic search will not work until Ollama is healthy. Then run:" -ForegroundColor Yellow
+    Write-Host "    docker compose up -d ollama" -ForegroundColor Gray
     Write-Host "    docker cp backend/setup-ollama.js smartlogistic-backend:/app/setup-ollama.js" -ForegroundColor Gray
     Write-Host "    docker exec smartlogistic-backend node /app/setup-ollama.js" -ForegroundColor Gray
 }

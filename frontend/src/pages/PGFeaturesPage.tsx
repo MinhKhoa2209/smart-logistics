@@ -87,6 +87,10 @@ function DemoSteps({ steps }: { steps: pgApi.DemoExecutionResult[] }) {
   );
 }
 
+function compactStep(step: pgApi.DemoExecutionResult | undefined | null): pgApi.DemoExecutionResult[] {
+  return step ? [step] : [];
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PGFeaturesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
@@ -263,6 +267,7 @@ function PartialIndexesDemo() {
       {loading && <LoadingSpinner />}{error && <ErrorAlert message={error} />}
       {result && (
         <div className="mt-4 space-y-4">
+          <DemoSteps steps={[result.withIndex, result.withoutIndex, result.indexMetadata]} />
           <div className="grid grid-cols-2 gap-4">
             {/* With Index */}
             <div className="rounded-xl border border-green-200 bg-green-50/50 dark:bg-green-950/20 p-4">
@@ -332,12 +337,20 @@ function MVDemo() {
         <Button variant="outline" onClick={async () => { setLoading(true); try { setCompareResult(await pgApi.compareMaterializedView()); } catch (e: any) { setError(e.message); } setLoading(false); }} disabled={loading}><Play className="h-3.5 w-3.5" /> Compare Performance</Button>
       </div>
       {loading && <LoadingSpinner />}{error && <ErrorAlert message={error} />}
-      {refreshResult && <div className="mt-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-xl p-4"><p className="text-sm font-medium text-green-800 dark:text-green-400">✓ Refreshed in <strong>{refreshResult.executionTimeMs}ms</strong> — reads unblocked (CONCURRENTLY)</p></div>}
+      {refreshResult && (
+        <div className="mt-4 space-y-4">
+          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-xl p-4"><p className="text-sm font-medium text-green-800 dark:text-green-400">✓ Refreshed in <strong>{refreshResult.executionTimeMs}ms</strong> — reads unblocked (CONCURRENTLY)</p></div>
+          <DemoSteps steps={compactStep(refreshResult)} />
+        </div>
+      )}
       {compareResult && (
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div className="rounded-xl border border-green-200 bg-green-50/50 dark:bg-green-950/20 p-4"><h4 className="font-semibold text-sm text-green-800 dark:text-green-400 mb-1">✓ Materialized View</h4><p className="text-2xl font-bold text-green-700 dark:text-green-400">{compareResult.comparison.mvExecutionTimeMs}ms</p><p className="text-xs text-green-600 dark:text-green-500">{compareResult.comparison.mvScanType}</p></div>
-          <div className="rounded-xl border border-red-200 bg-red-50/50 dark:bg-red-950/20 p-4"><h4 className="font-semibold text-sm text-red-800 dark:text-red-400 mb-1">✗ Base Table Query</h4><p className="text-2xl font-bold text-red-700 dark:text-red-400">{compareResult.comparison.baseExecutionTimeMs}ms</p><p className="text-xs text-red-600 dark:text-red-500">{compareResult.comparison.baseScanType}</p></div>
-          <div className="col-span-2 bg-primary/5 border border-primary/20 rounded-xl p-3 text-center"><p className="font-bold text-primary">{compareResult.comparison.speedup}</p></div>
+        <div className="mt-4 space-y-4">
+          <DemoSteps steps={[compareResult.mvQuery, compareResult.baseQuery]} />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-xl border border-green-200 bg-green-50/50 dark:bg-green-950/20 p-4"><h4 className="font-semibold text-sm text-green-800 dark:text-green-400 mb-1">✓ Materialized View</h4><p className="text-2xl font-bold text-green-700 dark:text-green-400">{compareResult.comparison.mvExecutionTimeMs}ms</p><p className="text-xs text-green-600 dark:text-green-500">{compareResult.comparison.mvScanType}</p></div>
+            <div className="rounded-xl border border-red-200 bg-red-50/50 dark:bg-red-950/20 p-4"><h4 className="font-semibold text-sm text-red-800 dark:text-red-400 mb-1">✗ Base Table Query</h4><p className="text-2xl font-bold text-red-700 dark:text-red-400">{compareResult.comparison.baseExecutionTimeMs}ms</p><p className="text-xs text-red-600 dark:text-red-500">{compareResult.comparison.baseScanType}</p></div>
+            <div className="col-span-2 bg-primary/5 border border-primary/20 rounded-xl p-3 text-center"><p className="font-bold text-primary">{compareResult.comparison.speedup}</p></div>
+          </div>
         </div>
       )}
     </div>
@@ -390,6 +403,19 @@ function RLSDemo() {
       {result && (
         <div className="mt-4 space-y-4">
           <p className="text-sm text-muted-foreground">{result.explanation}</p>
+          <DemoSteps steps={[
+            result.policies,
+            ...(result.roles || []).map((r: any) => ({
+              sql: r.sql,
+              result: {
+                role: r.role,
+                userId: r.userId,
+                visibleRows: r.rowCount,
+                sampleRows: r.sampleRows,
+              },
+              executionTimeMs: r.executionTimeMs,
+            })),
+          ]} />
           <div className="grid grid-cols-3 gap-4">
             {result.roles?.map((r: any) => (
               <div key={r.role} className="rounded-xl border p-4 text-center">
@@ -424,6 +450,7 @@ function PartitioningDemo() {
       {result && (
         <div className="mt-4 space-y-4">
           <p className="text-sm text-muted-foreground">{result.explanation}</p>
+          <DemoSteps steps={[result.partitions, result.queryPlan]} />
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-xl border border-green-200 bg-green-50/50 dark:bg-green-950/20 p-4">
               <h4 className="font-semibold text-sm text-green-800 dark:text-green-400 mb-2">✓ Scanned Partitions</h4>
@@ -437,7 +464,6 @@ function PartitioningDemo() {
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 text-center">
             <p className="text-sm font-medium">Execution: <strong>{result.partitionPruning.executionTimeMs}ms</strong> — Date filter: 2025-01-01 → 2026-01-01</p>
           </div>
-          {result.queryPlan && <SQLViewer sql={result.queryPlan.sql} title="EXPLAIN ANALYZE" executionTimeMs={result.queryPlan.executionTimeMs} />}
         </div>
       )}
     </div>
