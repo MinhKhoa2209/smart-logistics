@@ -70,6 +70,14 @@ This script automatically: starts Docker, waits for DB, restores schema, seeds d
 
 This starts: PostgreSQL, Ollama, Backend API, Frontend.
 
+```bash
+docker-compose up -d --build
+```
+
+Compose also runs a short `db-init` container that creates the non-superuser
+application role (`APP_DB_USER`, default `app_user`) and grants the required
+schema permissions before the backend starts.
+
 ### 3. Import database schema
 
 ```bash
@@ -94,6 +102,11 @@ docker exec smartlogistic-backend node /app/setup-ollama.js
 
 > Note: This step requires the Ollama container to be running and healthy.
 > The model download (~274MB) happens automatically on first run.
+>
+> If Docker prints `Found orphan containers ([smartlogistic-ollama])`, it is only
+> warning that Ollama was started from a separate compose file. Remove it with
+> `docker-compose down --remove-orphans` only when you no longer need that
+> container.
 
 ### 6. Open the app
 
@@ -107,5 +120,6 @@ See `backend/.env.example` for all available options.
 
 Key variables:
 - `DATABASE_URL` — PostgreSQL connection string
+- `APP_DB_USER` / `APP_DB_PASSWORD` — non-superuser database login used by the API
 - `OLLAMA_URL` — Ollama service URL (default: `http://ollama:11434`)
 - `EMBEDDING_MODEL` — Ollama model name (default: `nomic-embed-text`)

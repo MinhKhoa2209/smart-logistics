@@ -10,7 +10,13 @@ export interface DemoExecutionResult {
   error?: string;
 }
 
-const openTransactions = new Map<string, { client: PoolClient; startedAt: number; }>();
+type OpenTransaction = {
+  client: PoolClient;
+  startedAt: number;
+  onError: (error: Error) => void;
+};
+
+const openTransactions = new Map<string, OpenTransaction>();
 
 const TRANSACTION_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -19,6 +25,7 @@ setInterval(() => {
   for (const [sessionId, entry] of openTransactions.entries()) {
     if (now - entry.startedAt > TRANSACTION_TIMEOUT_MS) {
       entry.client.query('ROLLBACK').catch(() => { });
+      entry.client.off('error', entry.onError);
       entry.client.release();
       openTransactions.delete(sessionId);
     }
@@ -68,6 +75,7 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
   if (openTransactions.has(sessionId)) {
     const existing = openTransactions.get(sessionId)!;
     await existing.client.query('ROLLBACK').catch(() => { });
+    existing.client.off('error', existing.onError);
     existing.client.release();
     openTransactions.delete(sessionId);
   }
@@ -80,6 +88,8 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     await client.query('BEGIN');
 
     await client.query("SET LOCAL app.current_user_id = '1'");
+    await client.query("SET LOCAL lock_timeout = '2s'");
+    await client.query("SET LOCAL statement_timeout = '10s'");
     results.push({
       sql: 'BEGIN',
       result: { message: 'Transaction started' },
@@ -94,7 +104,9 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
       JOIN products p ON oi.product_id = p.product_id
       WHERE po.status IN ('pending', 'approved', 'ordered', 'partially_received')
         AND oi.received_quantity < oi.ordered_quantity
+      ORDER BY oi.order_item_id
       LIMIT 1
+      FOR UPDATE OF oi SKIP LOCKED
     `;
     const findResult = await executeDemoSql(client, findPoSql);
     results.push(findResult);
@@ -121,6 +133,16 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
     `;
     const updateResult = await executeDemoSql(client, updateSql, [receiveQty, item.order_item_id]);
     results.push(updateResult);
+    if (updateResult.error) {
+      await client.query('ROLLBACK').catch(() => { });
+      client.release();
+      results.push({
+        sql: 'ROLLBACK',
+        result: { message: 'Update failed. Transaction rolled back so no lock remains open.' },
+        executionTimeMs: 0,
+      });
+      return results;
+    }
 
     const movementSql = `
       INSERT INTO stock_movements (product_id, warehouse_id, change_amount, movement_type, reference_type)
@@ -134,8 +156,23 @@ export async function transactionsDemo(sessionId: string): Promise<DemoExecution
       `po_demo_${item.order_id}`,
     ]);
     results.push(movementResult);
+    if (movementResult.error) {
+      await client.query('ROLLBACK').catch(() => { });
+      client.release();
+      results.push({
+        sql: 'ROLLBACK',
+        result: { message: 'Stock movement insert failed. Transaction rolled back so no lock remains open.' },
+        executionTimeMs: 0,
+      });
+      return results;
+    }
 
-    openTransactions.set(sessionId, { client, startedAt: Date.now() });
+    const onError = (error: Error) => {
+      console.error(`Open transaction client error (${sessionId}):`, error.message);
+      openTransactions.delete(sessionId);
+    };
+    client.on('error', onError);
+    openTransactions.set(sessionId, { client, startedAt: Date.now(), onError });
 
     results.push({
       sql: '-- Transaction is now OPEN. Call /commit or /rollback to finalize.',
@@ -182,6 +219,7 @@ export async function commitTransaction(sessionId: string): Promise<DemoExecutio
       error: error.message,
     };
   } finally {
+    client.off('error', entry.onError);
     client.release();
     openTransactions.delete(sessionId);
   }
@@ -212,6 +250,7 @@ export async function rollbackTransaction(sessionId: string): Promise<DemoExecut
       error: error.message,
     };
   } finally {
+    client.off('error', entry.onError);
     client.release();
     openTransactions.delete(sessionId);
   }
@@ -229,8 +268,12 @@ export async function lockingDemo(params: {
   try {
     await clientA.query('BEGIN');
     await clientA.query("SET LOCAL app.current_user_id = '1'");
+    await clientA.query("SET LOCAL lock_timeout = '2s'");
+    await clientA.query("SET LOCAL statement_timeout = '10s'");
     await clientB.query('BEGIN');
     await clientB.query("SET LOCAL app.current_user_id = '1'");
+    await clientB.query("SET LOCAL lock_timeout = '2s'");
+    await clientB.query("SET LOCAL statement_timeout = '10s'");
 
     const findSql = `
       SELECT i.inventory_id, i.product_id, i.warehouse_id, i.quantity, i.lot_id,
@@ -241,7 +284,9 @@ export async function lockingDemo(params: {
       WHERE i.quantity >= 2
       ${params.product_id ? 'AND i.product_id = $1' : ''}
       ${params.warehouse_id ? `AND i.warehouse_id = $${params.product_id ? '2' : '1'}` : ''}
+      ORDER BY i.inventory_id
       LIMIT 1
+      FOR UPDATE OF i SKIP LOCKED
     `;
     const findParams: any[] = [];
     if (params.product_id) findParams.push(params.product_id);
@@ -259,6 +304,12 @@ export async function lockingDemo(params: {
     }
 
     const row = findResult.rows[0];
+    await clientA.query('ROLLBACK');
+    await clientA.query('BEGIN');
+    await clientA.query("SET LOCAL app.current_user_id = '1'");
+    await clientA.query("SET LOCAL lock_timeout = '2s'");
+    await clientA.query("SET LOCAL statement_timeout = '10s'");
+
     results.push({
       sql: formatSqlWithParams(findSql, findParams),
       result: {
@@ -274,14 +325,15 @@ export async function lockingDemo(params: {
 
     const lockSql = `
       SELECT * FROM inventory
-      WHERE product_id = $1 AND warehouse_id = $2
+      WHERE inventory_id = $1
       FOR UPDATE
     `;
-    const lockResult = await clientA.query(lockSql, [row.product_id, row.warehouse_id]);
+    const lockParams = [row.inventory_id];
+    const lockResult = await clientA.query(lockSql, lockParams);
     const transferALockTime = Date.now() - transferAStart;
 
     results.push({
-      sql: `-- Transfer A: Acquire lock\nBEGIN;\n${formatSqlWithParams(lockSql, [row.product_id, row.warehouse_id])}`,
+      sql: `-- Transfer A: Acquire lock\nBEGIN;\n${formatSqlWithParams(lockSql, lockParams)}`,
       result: {
         message: 'Transfer A acquired lock on inventory row',
         lockedRows: lockResult.rowCount,
@@ -294,7 +346,7 @@ export async function lockingDemo(params: {
 
     const transferBStart = Date.now();
 
-    const transferBPromise = clientB.query(lockSql, [row.product_id, row.warehouse_id])
+    const transferBPromise = clientB.query(lockSql, lockParams)
       .then((res) => ({ success: true, result: res, waitMs: Date.now() - transferBStart }))
       .catch((err) => ({ success: false, error: err.message, waitMs: Date.now() - transferBStart }));
 
@@ -316,7 +368,7 @@ export async function lockingDemo(params: {
 
     if (transferBResult.success) {
       results.push({
-        sql: `-- Transfer B: Waited for lock\nBEGIN;\nSET LOCAL lock_timeout = '5s';\n${formatSqlWithParams(lockSql, [row.product_id, row.warehouse_id])}`,
+        sql: `-- Transfer B: Waited for lock\nBEGIN;\nSET LOCAL lock_timeout = '5s';\n${formatSqlWithParams(lockSql, lockParams)}`,
         result: {
           message: 'Transfer B acquired lock after waiting',
           lockWaitMs: transferBResult.waitMs,
@@ -326,7 +378,7 @@ export async function lockingDemo(params: {
       });
     } else {
       results.push({
-        sql: `-- Transfer B: Lock wait timeout\nBEGIN;\nSET LOCAL lock_timeout = '5s';\n${formatSqlWithParams(lockSql, [row.product_id, row.warehouse_id])}`,
+        sql: `-- Transfer B: Lock wait timeout\nBEGIN;\nSET LOCAL lock_timeout = '5s';\n${formatSqlWithParams(lockSql, lockParams)}`,
         result: {
           message: 'Transfer B timed out waiting for lock',
           lockWaitMs: transferBResult.waitMs,

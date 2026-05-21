@@ -78,6 +78,12 @@ if (Test-Path "database/fix_trigger.sql") {
     docker cp database/fix_trigger.sql smartlogistic-db:/tmp/fix_trigger.sql
     docker exec smartlogistic-db psql -U postgres -d smart_logistics -f /tmp/fix_trigger.sql -q 2>$null
 }
+if (Test-Path "database/app_user.sql") {
+    $appDbUser = if ($env:APP_DB_USER) { $env:APP_DB_USER } else { "app_user" }
+    $appDbPassword = if ($env:APP_DB_PASSWORD) { $env:APP_DB_PASSWORD } else { "app_password" }
+    docker cp database/app_user.sql smartlogistic-db:/tmp/app_user.sql
+    docker exec smartlogistic-db psql -U postgres -d smart_logistics -v app_user="$appDbUser" -v app_password="$appDbPassword" -f /tmp/app_user.sql -q 2>$null
+}
 Write-Host "  Triggers updated." -ForegroundColor Green
 
 # ─── Step 7: Setup Ollama embeddings (optional) ───────────────

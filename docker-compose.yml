@@ -19,6 +19,27 @@ services:
       timeout: 5s
       retries: 10
 
+  # Ensure the non-superuser application role exists even when reusing an old DB volume
+  db-init:
+    image: pgvector/pgvector:pg17
+    container_name: smartlogistic-db-init
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      APP_DB_USER: ${APP_DB_USER:-app_user}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_password}
+    volumes:
+      - ./database/app_user.sql:/tmp/app_user.sql:ro
+    command:
+      [
+        "sh",
+        "-c",
+        "psql -h db -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-smart_logistics} -v app_user=\"$${APP_DB_USER}\" -v app_password=\"$${APP_DB_PASSWORD}\" -f /tmp/app_user.sql"
+      ]
+    depends_on:
+      db:
+        condition: service_healthy
+
   # Backend API
   backend:
     build:
@@ -36,8 +57,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      db:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
 
   # Frontend
   frontend:
