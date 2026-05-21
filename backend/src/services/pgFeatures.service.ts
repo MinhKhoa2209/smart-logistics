@@ -227,6 +227,11 @@ export async function lockingDemo(params: {
   const clientB = await getClient();
 
   try {
+    await clientA.query('BEGIN');
+    await clientA.query("SET LOCAL app.current_user_id = '1'");
+    await clientB.query('BEGIN');
+    await clientB.query("SET LOCAL app.current_user_id = '1'");
+
     const findSql = `
       SELECT i.inventory_id, i.product_id, i.warehouse_id, i.quantity, i.lot_id,
              p.name as product_name, w.name as warehouse_name
@@ -245,8 +250,6 @@ export async function lockingDemo(params: {
     const findResult = await clientA.query(findSql, findParams);
 
     if (findResult.rows.length === 0) {
-      clientA.release();
-      clientB.release();
       results.push({
         sql: findSql.trim(),
         result: { message: 'No inventory row with quantity >= 2 found for locking demo.' },
@@ -268,7 +271,6 @@ export async function lockingDemo(params: {
     });
 
     const transferAStart = Date.now();
-    await clientA.query('BEGIN');
 
     const lockSql = `
       SELECT * FROM inventory
@@ -287,8 +289,6 @@ export async function lockingDemo(params: {
       },
       executionTimeMs: transferALockTime,
     });
-
-    await clientB.query('BEGIN');
 
     await clientB.query('SET LOCAL lock_timeout = \'5s\'');
 
@@ -352,10 +352,10 @@ export async function lockingDemo(params: {
 
     return results;
   } catch (error: any) {
-    await clientA.query('ROLLBACK').catch(() => { });
-    await clientB.query('ROLLBACK').catch(() => { });
     throw new AppError(500, `Locking demo failed: ${error.message}`);
   } finally {
+    await clientA.query('ROLLBACK').catch(() => { });
+    await clientB.query('ROLLBACK').catch(() => { });
     clientA.release();
     clientB.release();
   }
